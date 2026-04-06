@@ -39,6 +39,7 @@ export type Database = {
           created_at: string
           cup_card: string | null
           mi_transfer: string | null
+          successful_deals: number
           updated_at: string
         }
         Insert: {
@@ -47,6 +48,7 @@ export type Database = {
           created_at?: string
           cup_card?: string | null
           mi_transfer?: string | null
+          successful_deals?: number
           updated_at?: string
         }
         Update: {
@@ -55,6 +57,7 @@ export type Database = {
           created_at?: string
           cup_card?: string | null
           mi_transfer?: string | null
+          successful_deals?: number
           updated_at?: string
         }
         Relationships: []
