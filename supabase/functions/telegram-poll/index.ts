@@ -4,7 +4,6 @@ const TELEGRAM_API = 'https://api.telegram.org';
 const MAX_RUNTIME_MS = 55_000;
 const MIN_REMAINING_MS = 5_000;
 
-// The channel users must join (simulated for now — change this to your real channel)
 const REQUIRED_CHANNEL = '@tu_canal'; // Cambia esto por tu canal real
 
 Deno.serve(async () => {
@@ -21,7 +20,6 @@ Deno.serve(async () => {
 
   let totalProcessed = 0;
 
-  // Read current offset
   const { data: state, error: stateErr } = await supabase
     .from('telegram_bot_state')
     .select('update_offset')
@@ -34,7 +32,6 @@ Deno.serve(async () => {
 
   let currentOffset = state.update_offset;
 
-  // Poll loop
   while (true) {
     const elapsed = Date.now() - startTime;
     const remainingMs = MAX_RUNTIME_MS - elapsed;
@@ -64,7 +61,6 @@ Deno.serve(async () => {
     const updates = data.result ?? [];
     if (updates.length === 0) continue;
 
-    // Process each update
     for (const update of updates) {
       try {
         if (update.message) {
@@ -78,7 +74,6 @@ Deno.serve(async () => {
       totalProcessed++;
     }
 
-    // Advance offset
     const newOffset = Math.max(...updates.map((u: any) => u.update_id)) + 1;
     await supabase
       .from('telegram_bot_state')
@@ -119,6 +114,32 @@ async function upsertUserState(supabase: any, chatId: number, username: string |
   }, { onConflict: 'chat_id' });
 }
 
+async function sendMainMenu(botToken: string, chatId: number, text: string) {
+  await sendMessage(botToken, chatId, text, {
+    reply_markup: {
+      keyboard: [
+        [{ text: '🛍️ Tienda' }, { text: '👤 Cuenta' }],
+        [{ text: '🎧 Soporte' }],
+      ],
+      resize_keyboard: true,
+      is_persistent: true,
+    },
+  });
+}
+
+async function sendTiendaMenu(botToken: string, chatId: number, text: string) {
+  await sendMessage(botToken, chatId, text, {
+    reply_markup: {
+      keyboard: [
+        [{ text: '📦 Servicios' }, { text: '💰 Venta de moneda' }],
+        [{ text: '🪙 Compra de moneda' }, { text: '🔙 Volver' }],
+      ],
+      resize_keyboard: true,
+      is_persistent: true,
+    },
+  });
+}
+
 // --- Handlers ---
 
 async function handleMessage(botToken: string, supabase: any, message: any) {
@@ -128,10 +149,8 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
   const firstName = message.from?.first_name;
 
   if (text === '/start') {
-    // Save user state
     await upsertUserState(supabase, chatId, username, firstName, 'awaiting_join');
 
-    // Send welcome message with channel link and verify button
     const welcomeText =
       `👋 <b>¡Bienvenido${firstName ? ', ' + firstName : ''}!</b>\n\n` +
       `Para continuar, únete a nuestro canal:\n` +
@@ -141,39 +160,136 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
     await sendMessage(botToken, chatId, welcomeText, {
       reply_markup: {
         inline_keyboard: [
-          [
-            { text: '📢 Unirse al Canal', url: `https://t.me/${REQUIRED_CHANNEL.replace('@', '')}` },
-          ],
-          [
-            { text: '✅ Verificar', callback_data: 'verify_channel' },
-          ],
+          [{ text: '📢 Unirse al Canal', url: `https://t.me/${REQUIRED_CHANNEL.replace('@', '')}` }],
+          [{ text: '✅ Verificar', callback_data: 'verify_channel' }],
         ],
       },
     });
     return;
   }
 
-  // If user is in menu state, handle menu text buttons
+  // Get user state
   const { data: userState } = await supabase
     .from('telegram_user_state')
     .select('step')
     .eq('chat_id', chatId)
     .single();
 
-  if (userState?.step === 'menu') {
-    if (text === '🛍️ Tienda') {
-      await sendMessage(botToken, chatId, '🛒 <b>Bienvenido a la Tienda</b>\n\nAquí podrás ver productos, ofertas y realizar compras. (Próximamente)');
-    } else if (text === '👤 Cuenta') {
-      await sendMessage(botToken, chatId, '👤 <b>Mi Cuenta</b>\n\nAquí podrás ver tu perfil, saldo y configuración. (Próximamente)');
-    } else if (text === '🎧 Soporte') {
-      await sendMessage(botToken, chatId, '🎧 <b>Soporte Técnico</b>\n\nDescribe tu problema y te ayudaremos lo antes posible. (Próximamente)');
-    } else {
-      await sendMessage(botToken, chatId, 'Usa los botones del menú para navegar. 👇');
-    }
+  const step = userState?.step;
+
+  // --- Tienda configuration steps ---
+
+  if (step === 'tienda_cup') {
+    // User is sending their CUP card number
+    await supabase.from('telegram_user_config').upsert({
+      chat_id: chatId,
+      cup_card: text.trim(),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'chat_id' });
+
+    await upsertUserState(supabase, chatId, username, firstName, 'tienda_confirm_number');
+    await sendMessage(botToken, chatId, '✅ Tarjeta CUP guardada.\n\n📱 Ahora envía el <b>número a confirmar</b>:');
     return;
   }
 
-  // Default response for unknown commands
+  if (step === 'tienda_confirm_number') {
+    await supabase.from('telegram_user_config').upsert({
+      chat_id: chatId,
+      confirm_number: text.trim(),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'chat_id' });
+
+    await upsertUserState(supabase, chatId, username, firstName, 'tienda_transfer');
+    await sendMessage(botToken, chatId, '✅ Número a confirmar guardado.\n\n💳 Ahora envía tu <b>monedero Mi Transfer</b>:');
+    return;
+  }
+
+  if (step === 'tienda_transfer') {
+    await supabase.from('telegram_user_config').upsert({
+      chat_id: chatId,
+      mi_transfer: text.trim(),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'chat_id' });
+
+    await upsertUserState(supabase, chatId, username, firstName, 'tienda_menu');
+    await sendTiendaMenu(botToken, chatId,
+      '✅ Monedero Mi Transfer guardado.\n\n' +
+      '🎉 <b>¡Configuración completada!</b>\n\n' +
+      'Usa los botones del menú para navegar por la tienda. 👇'
+    );
+    return;
+  }
+
+  // --- Menu navigation ---
+
+  if (step === 'menu') {
+    if (text === '🛍️ Tienda') {
+      // Check if user already has config
+      const { data: config } = await supabase
+        .from('telegram_user_config')
+        .select('cup_card, confirm_number, mi_transfer')
+        .eq('chat_id', chatId)
+        .single();
+
+      const isConfigured = config?.cup_card && config?.confirm_number && config?.mi_transfer;
+
+      if (isConfigured) {
+        // Already configured, go directly to tienda menu
+        await upsertUserState(supabase, chatId, username, firstName, 'tienda_menu');
+        await sendTiendaMenu(botToken, chatId, '🛍️ <b>Tienda</b>\n\nSelecciona una opción:');
+      } else {
+        // Start configuration flow
+        await upsertUserState(supabase, chatId, username, firstName, 'tienda_cup');
+        await sendMessage(botToken, chatId,
+          '🛍️ <b>Configuración de Tienda</b>\n\n' +
+          'Antes de empezar necesitas configurar tus datos de pago.\n\n' +
+          '💳 Envía tu <b>número de tarjeta CUP</b>:',
+          { reply_markup: { remove_keyboard: true } }
+        );
+      }
+      return;
+    }
+
+    if (text === '👤 Cuenta') {
+      await sendMessage(botToken, chatId, '👤 <b>Mi Cuenta</b>\n\nAquí podrás ver tu perfil, saldo y configuración. (Próximamente)');
+      return;
+    }
+
+    if (text === '🎧 Soporte') {
+      await sendMessage(botToken, chatId, '🎧 <b>Soporte Técnico</b>\n\nDescribe tu problema y te ayudaremos lo antes posible. (Próximamente)');
+      return;
+    }
+
+    await sendMessage(botToken, chatId, 'Usa los botones del menú para navegar. 👇');
+    return;
+  }
+
+  // --- Tienda sub-menu ---
+
+  if (step === 'tienda_menu') {
+    if (text === '📦 Servicios') {
+      await sendMessage(botToken, chatId, '📦 <b>Servicios</b>\n\nPróximamente podrás acceder a nuestros servicios aquí.');
+      return;
+    }
+    if (text === '💰 Venta de moneda') {
+      await sendMessage(botToken, chatId, '💰 <b>Venta de moneda</b>\n\nPróximamente podrás vender moneda aquí.');
+      return;
+    }
+    if (text === '🪙 Compra de moneda') {
+      await sendMessage(botToken, chatId, '🪙 <b>Compra de moneda</b>\n\nPróximamente podrás comprar moneda aquí.');
+      return;
+    }
+    if (text === '🔙 Volver') {
+      await upsertUserState(supabase, chatId, username, firstName, 'menu');
+      await sendMainMenu(botToken, chatId, '🏠 <b>Menú Principal</b>\n\nSelecciona una opción:');
+      return;
+    }
+
+    await sendMessage(botToken, chatId, 'Usa los botones del menú para navegar. 👇');
+    return;
+  }
+
+  // Default
   await sendMessage(botToken, chatId, 'Escribe /start para comenzar.');
 }
 
@@ -184,26 +300,11 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
   const firstName = callbackQuery.from?.first_name;
 
   if (callbackData === 'verify_channel') {
-    // For now, simulate verification as successful
-    // In production, use getChatMember to check if user joined
     await answerCallbackQuery(botToken, callbackQuery.id, '✅ ¡Verificación exitosa!');
-
-    // Update user state to menu
     await upsertUserState(supabase, chatId, username, firstName, 'menu');
 
-    // Send menu with ReplyKeyboardMarkup (buttons in the input area)
-    await sendMessage(botToken, chatId,
-      '🎉 <b>¡Verificación exitosa!</b>\n\nBienvenido al menú principal. Usa los botones de abajo para navegar.',
-      {
-        reply_markup: {
-          keyboard: [
-            [{ text: '🛍️ Tienda' }, { text: '👤 Cuenta' }],
-            [{ text: '🎧 Soporte' }],
-          ],
-          resize_keyboard: true,
-          is_persistent: true,
-        },
-      }
+    await sendMainMenu(botToken, chatId,
+      '🎉 <b>¡Verificación exitosa!</b>\n\nBienvenido al menú principal. Usa los botones de abajo para navegar.'
     );
     return;
   }
