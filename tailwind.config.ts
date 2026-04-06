@@ -47,6 +47,20 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        bot: {
+          bubble: "hsl(var(--bot-bubble))",
+          "bubble-foreground": "hsl(var(--bot-bubble-foreground))",
+        },
+        user: {
+          bubble: "hsl(var(--user-bubble))",
+          "bubble-foreground": "hsl(var(--user-bubble-foreground))",
+        },
+        menu: {
+          button: "hsl(var(--menu-button))",
+          "button-foreground": "hsl(var(--menu-button-foreground))",
+          "button-border": "hsl(var(--menu-button-border))",
+          "button-hover": "hsl(var(--menu-button-hover))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
