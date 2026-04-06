@@ -32,6 +32,33 @@ export type Database = {
         }
         Relationships: []
       }
+      telegram_user_config: {
+        Row: {
+          chat_id: number
+          confirm_number: string | null
+          created_at: string
+          cup_card: string | null
+          mi_transfer: string | null
+          updated_at: string
+        }
+        Insert: {
+          chat_id: number
+          confirm_number?: string | null
+          created_at?: string
+          cup_card?: string | null
+          mi_transfer?: string | null
+          updated_at?: string
+        }
+        Update: {
+          chat_id?: number
+          confirm_number?: string | null
+          created_at?: string
+          cup_card?: string | null
+          mi_transfer?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       telegram_user_state: {
         Row: {
           chat_id: number
