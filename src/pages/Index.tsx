@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import { Bot, Send, CheckCircle2, Hash } from "lucide-react";
+import { Bot, Send, CheckCircle2, Hash, Loader2 } from "lucide-react";
 import ChatBubble from "@/components/ChatBubble";
 import MenuButtons from "@/components/MenuButtons";
+import { supabase } from "@/integrations/supabase/client";
 
-type Step = "token" | "join-channel" | "verifying" | "verified" | "menu";
+type Step = "start" | "channel-input" | "joining" | "verify" | "verifying" | "menu";
 
 interface Message {
   text: string;
@@ -11,10 +12,13 @@ interface Message {
 }
 
 const Index = () => {
-  const [step, setStep] = useState<Step>("token");
-  const [token, setToken] = useState("");
+  const [step, setStep] = useState<Step>("start");
+  const [channelInput, setChannelInput] = useState("");
+  const [channelName, setChannelName] = useState("");
+  const [botName, setBotName] = useState("");
+  const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { text: "¡Hola! 👋 Soy tu bot asistente. Para comenzar, ingresa tu API Token.", isBot: true },
+    { text: "¡Hola! 👋 Soy tu panel de configuración del bot de Telegram. Presiona Start para comenzar.", isBot: true },
   ]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -26,38 +30,80 @@ const Index = () => {
     setMessages((prev) => [...prev, { text, isBot }]);
   };
 
-  const handleTokenSubmit = () => {
-    if (!token.trim()) return;
-    const masked = token.slice(0, 6) + "••••••" + token.slice(-4);
-    addMessage(`Token: ${masked}`, false);
-    setTimeout(() => {
-      addMessage("✅ Token guardado correctamente. Ahora únete a un canal para continuar.", true);
-      setStep("join-channel");
-    }, 600);
-    setToken("");
+  const callTelegramBot = async (action: string, extra: Record<string, string> = {}) => {
+    const { data, error } = await supabase.functions.invoke("telegram-bot", {
+      body: { action, ...extra },
+    });
+    if (error) throw new Error(error.message);
+    return data;
   };
 
-  const handleJoinChannel = () => {
-    addMessage("Unirme al canal #general", false);
+  const handleStart = async () => {
+    addMessage("▶️ Start", false);
+    setLoading(true);
+    try {
+      const data = await callTelegramBot("getMe");
+      if (data.ok) {
+        const bot = data.result;
+        setBotName(bot.first_name || bot.username);
+        addMessage(`✅ Bot conectado: @${bot.username} (${bot.first_name})`, true);
+        addMessage("Ahora ingresa el nombre de usuario del canal al que quieres unir el bot (ej: mi_canal).", true);
+        setStep("channel-input");
+      } else {
+        addMessage(`❌ Error: ${data.description || "No se pudo conectar al bot. Verifica el token."}`, true);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Error desconocido";
+      addMessage(`❌ Error de conexión: ${msg}`, true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChannelSubmit = () => {
+    if (!channelInput.trim()) return;
+    const name = channelInput.trim().replace(/^@/, "");
+    setChannelName(name);
+    addMessage(`Canal: @${name}`, false);
+    addMessage(`📢 Para unir el bot al canal @${name}, agrégalo como administrador desde Telegram. Luego presiona "Verificar" para confirmar.`, true);
+    setStep("verify");
+    setChannelInput("");
+  };
+
+  const handleVerify = async () => {
+    addMessage("🔍 Verificar conexión al canal", false);
     setStep("verifying");
-    setTimeout(() => {
-      addMessage("⏳ Uniéndote al canal #general...", true);
-    }, 400);
-    setTimeout(() => {
-      addMessage("✅ ¡Te has unido al canal #general exitosamente!", true);
-      setStep("verified");
-    }, 2000);
-  };
+    setLoading(true);
+    try {
+      const data = await callTelegramBot("getChatMember", { channel_username: channelName });
+      if (data.ok) {
+        const status = data.result.status;
+        if (["administrator", "creator", "member"].includes(status)) {
+          addMessage(`✅ ¡El bot es ${status === "administrator" ? "administrador" : "miembro"} del canal @${channelName}!`, true);
 
-  const handleVerify = () => {
-    addMessage("Verificar conexión", false);
-    setTimeout(() => {
-      addMessage("🔍 Verificando conexión al canal...", true);
-    }, 300);
-    setTimeout(() => {
-      addMessage("✅ Conexión verificada. ¡Todo listo! Aquí tienes el menú principal.", true);
-      setStep("menu");
-    }, 1500);
+          // Set bot commands
+          const cmdData = await callTelegramBot("setMyCommands");
+          if (cmdData.ok) {
+            addMessage("✅ Comandos del menú configurados (/start, /tienda, /cuenta, /soporte).", true);
+          }
+
+          addMessage("🎉 ¡Todo listo! Aquí tienes el menú principal.", true);
+          setStep("menu");
+        } else {
+          addMessage(`⚠️ El bot está en el canal pero con estado "${status}". Asegúrate de que sea administrador.`, true);
+          setStep("verify");
+        }
+      } else {
+        addMessage(`❌ ${data.description || "El bot no está en ese canal. Agrégalo como administrador primero."}`, true);
+        setStep("verify");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Error desconocido";
+      addMessage(`❌ Error: ${msg}`, true);
+      setStep("verify");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleMenuSelect = (option: string) => {
@@ -85,8 +131,12 @@ const Index = () => {
           <Bot className="w-6 h-6 text-primary-foreground" />
         </div>
         <div>
-          <h1 className="text-primary-foreground font-semibold text-base">Bot Asistente</h1>
-          <p className="text-primary-foreground/70 text-xs">En línea</p>
+          <h1 className="text-primary-foreground font-semibold text-base">
+            {botName ? `@${botName}` : "Bot Telegram"}
+          </h1>
+          <p className="text-primary-foreground/70 text-xs">
+            {step === "menu" ? "Configurado ✓" : "Configuración"}
+          </p>
         </div>
       </header>
 
@@ -96,29 +146,15 @@ const Index = () => {
           <ChatBubble key={i} message={msg.text} isBot={msg.isBot} />
         ))}
 
-        {/* Join channel buttons */}
-        {step === "join-channel" && (
+        {/* Loading spinner */}
+        {loading && (
           <div className="flex justify-center py-3 animate-fade-in">
-            <button
-              onClick={handleJoinChannel}
-              className="flex items-center gap-2 px-5 py-3 rounded-xl bg-primary text-primary-foreground
-                font-medium shadow-lg hover:opacity-90 active:scale-95 transition-all"
-            >
-              <Hash className="w-4 h-4" />
-              Unirse a #general
-            </button>
-          </div>
-        )}
-
-        {/* Verifying spinner */}
-        {step === "verifying" && (
-          <div className="flex justify-center py-3 animate-fade-in">
-            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <Loader2 className="w-6 h-6 text-primary animate-spin" />
           </div>
         )}
 
         {/* Verify button */}
-        {step === "verified" && (
+        {step === "verify" && !loading && (
           <div className="flex justify-center py-3 animate-fade-in">
             <button
               onClick={handleVerify}
@@ -127,7 +163,7 @@ const Index = () => {
                 active:scale-95 transition-all"
             >
               <CheckCircle2 className="w-4 h-4" />
-              Verificar conexión
+              Verificar que el bot está en @{channelName}
             </button>
           </div>
         )}
@@ -135,21 +171,32 @@ const Index = () => {
 
       {/* Bottom input / menu area */}
       <div className="border-t border-border bg-card px-3 py-3">
-        {step === "token" ? (
+        {step === "start" ? (
+          <div className="flex justify-center">
+            <button
+              onClick={handleStart}
+              disabled={loading}
+              className="flex items-center gap-2 px-8 py-3 rounded-xl bg-primary text-primary-foreground
+                font-semibold shadow-lg hover:opacity-90 active:scale-95 transition-all disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "▶️ Start"}
+            </button>
+          </div>
+        ) : step === "channel-input" ? (
           <div className="flex gap-2">
             <input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleTokenSubmit()}
-              placeholder="Ingresa tu API Token..."
+              type="text"
+              value={channelInput}
+              onChange={(e) => setChannelInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleChannelSubmit()}
+              placeholder="Nombre del canal (ej: mi_canal)"
               className="flex-1 px-4 py-3 rounded-xl bg-muted text-foreground text-sm
                 placeholder:text-muted-foreground border border-border
                 focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <button
-              onClick={handleTokenSubmit}
-              disabled={!token.trim()}
+              onClick={handleChannelSubmit}
+              disabled={!channelInput.trim()}
               className="w-12 h-12 rounded-xl bg-primary text-primary-foreground flex items-center justify-center
                 disabled:opacity-40 hover:opacity-90 active:scale-95 transition-all"
             >
@@ -160,7 +207,7 @@ const Index = () => {
           <MenuButtons onSelect={handleMenuSelect} />
         ) : (
           <div className="text-center text-muted-foreground text-sm py-2">
-            Sigue las instrucciones del bot...
+            {loading ? "Conectando con Telegram..." : "Sigue las instrucciones del bot..."}
           </div>
         )}
       </div>
