@@ -1,0 +1,1 @@
+ALTER TABLE public.telegram_user_config ADD COLUMN successful_deals INTEGER NOT NULL DEFAULT 0;
