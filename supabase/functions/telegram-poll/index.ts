@@ -251,7 +251,24 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
     }
 
     if (text === '👤 Cuenta') {
-      await sendMessage(botToken, chatId, '👤 <b>Mi Cuenta</b>\n\nAquí podrás ver tu perfil, saldo y configuración. (Próximamente)');
+      const { data: config } = await supabase
+        .from('telegram_user_config')
+        .select('cup_card, confirm_number, mi_transfer, successful_deals')
+        .eq('chat_id', chatId)
+        .single();
+
+      const cup = config?.cup_card ?? '❌ No configurada';
+      const confirm = config?.confirm_number ?? '❌ No configurado';
+      const transfer = config?.mi_transfer ?? '❌ No configurado';
+      const deals = config?.successful_deals ?? 0;
+
+      await sendMessage(botToken, chatId,
+        `👤 <b>Mi Cuenta</b>\n\n` +
+        `💳 <b>Tarjeta CUP:</b> ${cup}\n` +
+        `📱 <b>Número a confirmar:</b> ${confirm}\n` +
+        `🪙 <b>Monedero Mi Transfer:</b> ${transfer}\n\n` +
+        `✅ <b>Negocios exitosos:</b> ${deals}`
+      );
       return;
     }
 
