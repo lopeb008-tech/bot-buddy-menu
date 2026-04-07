@@ -18,6 +18,14 @@ const SM_PACKAGES = [
   { sm: 370, cup: 1300 },
 ];
 
+// Steps that can be cancelled back to tienda menu
+const CANCELLABLE_STEPS = [
+  'tienda_cup', 'tienda_confirm_number', 'tienda_transfer',
+  'compra_amount', 'compra_waiting_screenshot',
+  'venta_amount', 'venta_payment_method', 'venta_waiting_screenshot',
+  'sm_waiting_screenshot',
+];
+
 Deno.serve(async () => {
   const startTime = Date.now();
 
@@ -190,6 +198,13 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
 
   const step = userState?.step;
 
+  // --- Global cancel: if user sends ❌ Cancelar in any cancellable step ---
+  if (text === '❌ Cancelar' && CANCELLABLE_STEPS.includes(step)) {
+    await upsertUserState(supabase, chatId, username, firstName, 'tienda_menu');
+    await sendTiendaMenu(botToken, chatId, '🚫 <b>Solicitud cancelada.</b>\n\nSelecciona una opción:');
+    return;
+  }
+
   // --- Photo handler for screenshot steps ---
   if (message.photo && (step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'venta_waiting_screenshot')) {
     await upsertUserState(supabase, chatId, username, firstName, 'tienda_menu');
@@ -211,7 +226,8 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
     }, { onConflict: 'chat_id' });
 
     await upsertUserState(supabase, chatId, username, firstName, 'tienda_confirm_number');
-    await sendMessage(botToken, chatId, '✅ Tarjeta CUP guardada.\n\n📱 Ahora envía el <b>número a confirmar</b>:');
+    await sendMessage(botToken, chatId,
+      '✅ Tarjeta CUP guardada.\n\n📱 Ahora envía el <b>número a confirmar</b>:\n\n<i>Envía ❌ Cancelar para volver.</i>');
     return;
   }
 
@@ -223,7 +239,8 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
     }, { onConflict: 'chat_id' });
 
     await upsertUserState(supabase, chatId, username, firstName, 'tienda_transfer');
-    await sendMessage(botToken, chatId, '✅ Número a confirmar guardado.\n\n💳 Ahora envía tu <b>monedero Mi Transfer</b>:');
+    await sendMessage(botToken, chatId,
+      '✅ Número a confirmar guardado.\n\n💳 Ahora envía tu <b>monedero Mi Transfer</b>:\n\n<i>Envía ❌ Cancelar para volver.</i>');
     return;
   }
 
@@ -253,12 +270,19 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
       `Debes pagar: <b>${parseFloat(amount || '0') * 600} CUP</b>\n\n` +
       `📤 Envía los USDT a la siguiente wallet:\n` +
       `<code>${ADMIN_USDT_WALLET}</code>\n\n` +
-      `📸 Después de enviar, manda una <b>captura de pantalla</b> de la transferencia.`
+      `📸 Después de enviar, manda una <b>captura de pantalla</b> de la transferencia.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }],
+          ],
+        },
+      }
     );
     return;
   }
 
-  // --- Venta de moneda: user sends CUP amount ---
+  // --- Venta de moneda: user sends USDT amount ---
   if (step === 'venta_amount') {
     const usdtAmount = parseFloat(text.trim() || '0');
     const cupAmount = usdtAmount * 640;
@@ -274,6 +298,7 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
           inline_keyboard: [
             [{ text: '💳 Tarjeta CUP', callback_data: 'venta_pay_card' }],
             [{ text: '📲 Bolsa Mi Transfer', callback_data: 'venta_pay_transfer' }],
+            [{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }],
           ],
         },
       }
@@ -283,9 +308,9 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
 
   // --- Venta de moneda: waiting for screenshot ---
   if (step === 'venta_waiting_screenshot') {
-    // If they send text instead of photo
     if (!message.photo) {
-      await sendMessage(botToken, chatId, '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.');
+      await sendMessage(botToken, chatId,
+        '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.\n\n<i>Envía ❌ Cancelar para volver.</i>');
       return;
     }
   }
@@ -293,7 +318,8 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
   // --- SM: waiting for screenshot ---
   if (step === 'sm_waiting_screenshot') {
     if (!message.photo) {
-      await sendMessage(botToken, chatId, '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.');
+      await sendMessage(botToken, chatId,
+        '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.\n\n<i>Envía ❌ Cancelar para volver.</i>');
       return;
     }
   }
@@ -301,7 +327,8 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
   // --- Compra: waiting for screenshot ---
   if (step === 'compra_waiting_screenshot') {
     if (!message.photo) {
-      await sendMessage(botToken, chatId, '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.');
+      await sendMessage(botToken, chatId,
+        '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.\n\n<i>Envía ❌ Cancelar para volver.</i>');
       return;
     }
   }
@@ -326,7 +353,8 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
         await sendMessage(botToken, chatId,
           '🛍️ <b>Configuración de Tienda</b>\n\n' +
           'Antes de empezar necesitas configurar tus datos de pago.\n\n' +
-          '💳 Envía tu <b>número de tarjeta CUP</b>:',
+          '💳 Envía tu <b>número de tarjeta CUP</b>:\n\n' +
+          '<i>Envía ❌ Cancelar para volver.</i>',
           { reply_markup: { remove_keyboard: true } }
         );
       }
@@ -379,9 +407,12 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
         `Elige un paquete:\n\n${packagesText}`,
         {
           reply_markup: {
-            inline_keyboard: SM_PACKAGES.map((p) => [
-              { text: `📱 ${p.sm} SM - ${p.cup} CUP`, callback_data: `sm_pkg_${p.sm}` },
-            ]),
+            inline_keyboard: [
+              ...SM_PACKAGES.map((p) => [
+                { text: `📱 ${p.sm} SM - ${p.cup} CUP`, callback_data: `sm_pkg_${p.sm}` },
+              ]),
+              [{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }],
+            ],
           },
         }
       );
@@ -393,7 +424,8 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
         `💰 <b>Venta de Moneda</b>\n\n` +
         `El administrador vende:\n` +
         `<b>1 USDT = 640 CUP</b>\n\n` +
-        `📝 Envía la cantidad de <b>USDT</b> que deseas comprar:`,
+        `📝 Envía la cantidad de <b>USDT</b> que deseas comprar:\n\n` +
+        `<i>Envía ❌ Cancelar para volver.</i>`,
         { reply_markup: { remove_keyboard: true } }
       );
       await upsertUserState(supabase, chatId, username, firstName, 'venta_amount');
@@ -405,7 +437,8 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
         `🪙 <b>Compra de Moneda</b>\n\n` +
         `Compramos:\n` +
         `<b>1 USDT = 600 CUP</b>\n\n` +
-        `📝 Envía la cantidad de <b>USDT</b> que deseas vender:`,
+        `📝 Envía la cantidad de <b>USDT</b> que deseas vender:\n\n` +
+        `<i>Envía ❌ Cancelar para volver.</i>`,
         { reply_markup: { remove_keyboard: true } }
       );
       await upsertUserState(supabase, chatId, username, firstName, 'compra_amount');
@@ -431,6 +464,14 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
   const callbackData = callbackQuery.data;
   const username = callbackQuery.from?.username;
   const firstName = callbackQuery.from?.first_name;
+
+  // --- Cancel to tienda menu ---
+  if (callbackData === 'cancel_to_tienda') {
+    await answerCallbackQuery(botToken, callbackQuery.id, '🚫 Cancelado');
+    await upsertUserState(supabase, chatId, username, firstName, 'tienda_menu');
+    await sendTiendaMenu(botToken, chatId, '🚫 <b>Solicitud cancelada.</b>\n\nSelecciona una opción:');
+    return;
+  }
 
   // --- Verify channel ---
   if (callbackData === 'verify_channel') {
@@ -460,6 +501,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
           inline_keyboard: [
             [{ text: '💳 Tarjeta CUP', callback_data: `sm_pay_card_${pkg.sm}` }],
             [{ text: '📲 Bolsa Mi Transfer', callback_data: `sm_pay_transfer_${pkg.sm}` }],
+            [{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }],
           ],
         },
       }
@@ -479,7 +521,8 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
       `Envía <b>${pkg?.cup} CUP</b> a la tarjeta:\n` +
       `<code>${ADMIN_CUP_CARD}</code>\n\n` +
       `⚠️ <b>Por favor confirma al número: ${ADMIN_CONFIRM_NUMBER}</b>\n\n` +
-      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`,
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.\n\n` +
+      `<i>Envía ❌ Cancelar para volver.</i>`,
       { reply_markup: { remove_keyboard: true } }
     );
     return;
@@ -496,7 +539,8 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
       `Paquete: <b>${pkg?.sm} SM - ${pkg?.cup} CUP</b>\n\n` +
       `Envía <b>${pkg?.cup} CUP</b> a Mi Transfer:\n` +
       `<code>${ADMIN_MI_TRANSFER}</code>\n\n` +
-      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`,
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.\n\n` +
+      `<i>Envía ❌ Cancelar para volver.</i>`,
       { reply_markup: { remove_keyboard: true } }
     );
     return;
@@ -511,7 +555,8 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
       `Envía los CUP a la tarjeta:\n` +
       `<code>${ADMIN_CUP_CARD}</code>\n\n` +
       `⚠️ <b>Por favor confirma al número: ${ADMIN_CONFIRM_NUMBER}</b>\n\n` +
-      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.\n\n` +
+      `<i>Envía ❌ Cancelar para volver.</i>`
     );
     return;
   }
@@ -523,7 +568,8 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
       `📲 <b>Pago por Bolsa Mi Transfer</b>\n\n` +
       `Envía los CUP a Mi Transfer:\n` +
       `<code>${ADMIN_MI_TRANSFER}</code>\n\n` +
-      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.\n\n` +
+      `<i>Envía ❌ Cancelar para volver.</i>`
     );
     return;
   }
