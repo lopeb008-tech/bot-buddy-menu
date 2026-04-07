@@ -392,7 +392,7 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
         `💰 <b>Venta de Moneda</b>\n\n` +
         `El administrador vende:\n` +
         `<b>1 USDT = 640 CUP</b>\n\n` +
-        `📝 Envía la cantidad de <b>CUP</b> que deseas comprar:`,
+        `📝 Envía la cantidad de <b>USDT</b> que deseas comprar:`,
         { reply_markup: { remove_keyboard: true } }
       );
       await upsertUserState(supabase, chatId, username, firstName, 'venta_amount');
