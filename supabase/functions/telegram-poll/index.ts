@@ -260,14 +260,15 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
 
   // --- Venta de moneda: user sends CUP amount ---
   if (step === 'venta_amount') {
-    const amount = text.trim();
-    const usdtAmount = (parseFloat(amount || '0') / 640).toFixed(2);
+    const usdtAmount = parseFloat(text.trim() || '0');
+    const cupAmount = usdtAmount * 640;
     await upsertUserState(supabase, chatId, username, firstName, 'venta_payment_method');
     await sendMessage(botToken, chatId,
       `💰 <b>Venta de Moneda</b>\n\n` +
-      `Monto: <b>${amount} CUP</b> = <b>${usdtAmount} USDT</b>\n` +
+      `Monto: <b>${usdtAmount} USDT</b> = <b>${cupAmount} CUP</b>\n` +
       `(Tasa: 1 USDT = 640 CUP)\n\n` +
-      `¿Cómo deseas recibir el pago?`,
+      `Debes pagar <b>${cupAmount} CUP</b> al método que elijas.\n\n` +
+      `¿Cómo deseas pagar?`,
       {
         reply_markup: {
           inline_keyboard: [
