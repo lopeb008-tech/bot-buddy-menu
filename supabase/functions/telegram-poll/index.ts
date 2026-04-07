@@ -4,7 +4,19 @@ const TELEGRAM_API = 'https://api.telegram.org';
 const MAX_RUNTIME_MS = 55_000;
 const MIN_REMAINING_MS = 5_000;
 
-const REQUIRED_CHANNEL = '@tu_canal'; // Cambia esto por tu canal real
+const REQUIRED_CHANNEL_LINK = 'https://t.me/+KsLnyjMV579jM2Ix';
+
+// Payment config
+const ADMIN_CUP_CARD = '9204-0699-9692-9675';
+const ADMIN_CONFIRM_NUMBER = '58613666';
+const ADMIN_MI_TRANSFER = '58613666';
+const ADMIN_USDT_WALLET = '0xD64Ea37111d1926C1015091a6D241996946A29B0';
+
+const SM_PACKAGES = [
+  { sm: 120, cup: 400 },
+  { sm: 240, cup: 1000 },
+  { sm: 370, cup: 1300 },
+];
 
 Deno.serve(async () => {
   const startTime = Date.now();
@@ -131,8 +143,9 @@ async function sendTiendaMenu(botToken: string, chatId: number, text: string) {
   await sendMessage(botToken, chatId, text, {
     reply_markup: {
       keyboard: [
-        [{ text: '📦 Servicios' }, { text: '💰 Venta de moneda' }],
-        [{ text: '🪙 Compra de moneda' }, { text: '🔙 Volver' }],
+        [{ text: '📦 Servicios' }, { text: '💵 Venta de SM' }],
+        [{ text: '💰 Venta de moneda' }, { text: '🪙 Compra de moneda' }],
+        [{ text: '🔙 Volver' }],
       ],
       resize_keyboard: true,
       is_persistent: true,
@@ -153,14 +166,14 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
 
     const welcomeText =
       `👋 <b>¡Bienvenido${firstName ? ', ' + firstName : ''}!</b>\n\n` +
-      `Para continuar, únete a nuestro canal:\n` +
-      `👉 https://t.me/${REQUIRED_CHANNEL.replace('@', '')}\n\n` +
+      `Para continuar, únete a nuestro grupo:\n` +
+      `👉 ${REQUIRED_CHANNEL_LINK}\n\n` +
       `Después de unirte, presiona el botón <b>"✅ Verificar"</b> para confirmar.`;
 
     await sendMessage(botToken, chatId, welcomeText, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: '📢 Unirse al Canal', url: `https://t.me/${REQUIRED_CHANNEL.replace('@', '')}` }],
+          [{ text: '📢 Unirse al Grupo', url: REQUIRED_CHANNEL_LINK }],
           [{ text: '✅ Verificar', callback_data: 'verify_channel' }],
         ],
       },
@@ -177,10 +190,20 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
 
   const step = userState?.step;
 
+  // --- Photo handler for screenshot steps ---
+  if (message.photo && (step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'venta_waiting_screenshot')) {
+    await upsertUserState(supabase, chatId, username, firstName, 'tienda_menu');
+    await sendTiendaMenu(botToken, chatId,
+      '✅ <b>¡Captura recibida!</b>\n\n' +
+      'Tu solicitud ha sido enviada al administrador para verificación. Te notificaremos cuando sea procesada.\n\n' +
+      'Selecciona una opción:'
+    );
+    return;
+  }
+
   // --- Tienda configuration steps ---
 
   if (step === 'tienda_cup') {
-    // User is sending their CUP card number
     await supabase.from('telegram_user_config').upsert({
       chat_id: chatId,
       cup_card: text.trim(),
@@ -220,11 +243,72 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
     return;
   }
 
+  // --- Compra de moneda: user sends amount ---
+  if (step === 'compra_amount') {
+    const amount = text.trim();
+    await upsertUserState(supabase, chatId, username, firstName, 'compra_waiting_screenshot');
+    await sendMessage(botToken, chatId,
+      `🪙 <b>Compra de Moneda</b>\n\n` +
+      `Monto a comprar: <b>${amount} USDT</b>\n` +
+      `Debes pagar: <b>${parseFloat(amount || '0') * 600} CUP</b>\n\n` +
+      `📤 Envía los USDT a la siguiente wallet:\n` +
+      `<code>${ADMIN_USDT_WALLET}</code>\n\n` +
+      `📸 Después de enviar, manda una <b>captura de pantalla</b> de la transferencia.`
+    );
+    return;
+  }
+
+  // --- Venta de moneda: user sends CUP amount ---
+  if (step === 'venta_amount') {
+    const amount = text.trim();
+    const usdtAmount = (parseFloat(amount || '0') / 640).toFixed(2);
+    await upsertUserState(supabase, chatId, username, firstName, 'venta_payment_method');
+    await sendMessage(botToken, chatId,
+      `💰 <b>Venta de Moneda</b>\n\n` +
+      `Monto: <b>${amount} CUP</b> = <b>${usdtAmount} USDT</b>\n` +
+      `(Tasa: 1 USDT = 640 CUP)\n\n` +
+      `¿Cómo deseas recibir el pago?`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💳 Tarjeta CUP', callback_data: 'venta_pay_card' }],
+            [{ text: '📲 Bolsa Mi Transfer', callback_data: 'venta_pay_transfer' }],
+          ],
+        },
+      }
+    );
+    return;
+  }
+
+  // --- Venta de moneda: waiting for screenshot ---
+  if (step === 'venta_waiting_screenshot') {
+    // If they send text instead of photo
+    if (!message.photo) {
+      await sendMessage(botToken, chatId, '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.');
+      return;
+    }
+  }
+
+  // --- SM: waiting for screenshot ---
+  if (step === 'sm_waiting_screenshot') {
+    if (!message.photo) {
+      await sendMessage(botToken, chatId, '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.');
+      return;
+    }
+  }
+
+  // --- Compra: waiting for screenshot ---
+  if (step === 'compra_waiting_screenshot') {
+    if (!message.photo) {
+      await sendMessage(botToken, chatId, '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.');
+      return;
+    }
+  }
+
   // --- Menu navigation ---
 
   if (step === 'menu') {
     if (text === '🛍️ Tienda') {
-      // Check if user already has config
       const { data: config } = await supabase
         .from('telegram_user_config')
         .select('cup_card, confirm_number, mi_transfer')
@@ -234,11 +318,9 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
       const isConfigured = config?.cup_card && config?.confirm_number && config?.mi_transfer;
 
       if (isConfigured) {
-        // Already configured, go directly to tienda menu
         await upsertUserState(supabase, chatId, username, firstName, 'tienda_menu');
         await sendTiendaMenu(botToken, chatId, '🛍️ <b>Tienda</b>\n\nSelecciona una opción:');
       } else {
-        // Start configuration flow
         await upsertUserState(supabase, chatId, username, firstName, 'tienda_cup');
         await sendMessage(botToken, chatId,
           '🛍️ <b>Configuración de Tienda</b>\n\n' +
@@ -288,14 +370,47 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
       await sendMessage(botToken, chatId, '📦 <b>Servicios</b>\n\nPróximamente podrás acceder a nuestros servicios aquí.');
       return;
     }
+
+    if (text === '💵 Venta de SM') {
+      const packagesText = SM_PACKAGES.map((p, i) => `${i + 1}. <b>${p.sm} SM</b> x <b>${p.cup} CUP</b>`).join('\n');
+      await sendMessage(botToken, chatId,
+        `💵 <b>Venta de Saldo Móvil</b>\n\n` +
+        `Elige un paquete:\n\n${packagesText}`,
+        {
+          reply_markup: {
+            inline_keyboard: SM_PACKAGES.map((p) => [
+              { text: `📱 ${p.sm} SM - ${p.cup} CUP`, callback_data: `sm_pkg_${p.sm}` },
+            ]),
+          },
+        }
+      );
+      return;
+    }
+
     if (text === '💰 Venta de moneda') {
-      await sendMessage(botToken, chatId, '💰 <b>Venta de moneda</b>\n\nPróximamente podrás vender moneda aquí.');
+      await sendMessage(botToken, chatId,
+        `💰 <b>Venta de Moneda</b>\n\n` +
+        `El administrador vende:\n` +
+        `<b>1 USDT = 640 CUP</b>\n\n` +
+        `📝 Envía la cantidad de <b>CUP</b> que deseas comprar:`,
+        { reply_markup: { remove_keyboard: true } }
+      );
+      await upsertUserState(supabase, chatId, username, firstName, 'venta_amount');
       return;
     }
+
     if (text === '🪙 Compra de moneda') {
-      await sendMessage(botToken, chatId, '🪙 <b>Compra de moneda</b>\n\nPróximamente podrás comprar moneda aquí.');
+      await sendMessage(botToken, chatId,
+        `🪙 <b>Compra de Moneda</b>\n\n` +
+        `Compramos:\n` +
+        `<b>1 USDT = 600 CUP</b>\n\n` +
+        `📝 Envía la cantidad de <b>USDT</b> que deseas vender:`,
+        { reply_markup: { remove_keyboard: true } }
+      );
+      await upsertUserState(supabase, chatId, username, firstName, 'compra_amount');
       return;
     }
+
     if (text === '🔙 Volver') {
       await upsertUserState(supabase, chatId, username, firstName, 'menu');
       await sendMainMenu(botToken, chatId, '🏠 <b>Menú Principal</b>\n\nSelecciona una opción:');
@@ -316,13 +431,106 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
   const username = callbackQuery.from?.username;
   const firstName = callbackQuery.from?.first_name;
 
+  // --- Verify channel ---
   if (callbackData === 'verify_channel') {
     await answerCallbackQuery(botToken, callbackQuery.id, '✅ ¡Verificación exitosa!');
     await upsertUserState(supabase, chatId, username, firstName, 'menu');
-
     await sendMainMenu(botToken, chatId,
       '🎉 <b>¡Verificación exitosa!</b>\n\nBienvenido al menú principal. Usa los botones de abajo para navegar.'
     );
+    return;
+  }
+
+  // --- SM package selection ---
+  if (callbackData?.startsWith('sm_pkg_')) {
+    const smAmount = parseInt(callbackData.replace('sm_pkg_', ''));
+    const pkg = SM_PACKAGES.find(p => p.sm === smAmount);
+    if (!pkg) {
+      await answerCallbackQuery(botToken, callbackQuery.id, '❌ Paquete no encontrado');
+      return;
+    }
+
+    await answerCallbackQuery(botToken, callbackQuery.id, `📱 ${pkg.sm} SM seleccionado`);
+    await sendMessage(botToken, chatId,
+      `📱 <b>Paquete seleccionado:</b> ${pkg.sm} SM x ${pkg.cup} CUP\n\n` +
+      `¿Cómo deseas pagar?`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💳 Tarjeta CUP', callback_data: `sm_pay_card_${pkg.sm}` }],
+            [{ text: '📲 Bolsa Mi Transfer', callback_data: `sm_pay_transfer_${pkg.sm}` }],
+          ],
+        },
+      }
+    );
+    return;
+  }
+
+  // --- SM payment by card ---
+  if (callbackData?.startsWith('sm_pay_card_')) {
+    const smAmount = parseInt(callbackData.replace('sm_pay_card_', ''));
+    const pkg = SM_PACKAGES.find(p => p.sm === smAmount);
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'sm_waiting_screenshot');
+    await sendMessage(botToken, chatId,
+      `💳 <b>Pago por Tarjeta CUP</b>\n\n` +
+      `Paquete: <b>${pkg?.sm} SM - ${pkg?.cup} CUP</b>\n\n` +
+      `Envía <b>${pkg?.cup} CUP</b> a la tarjeta:\n` +
+      `<code>${ADMIN_CUP_CARD}</code>\n\n` +
+      `⚠️ <b>Por favor confirma al número: ${ADMIN_CONFIRM_NUMBER}</b>\n\n` +
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`,
+      { reply_markup: { remove_keyboard: true } }
+    );
+    return;
+  }
+
+  // --- SM payment by Mi Transfer ---
+  if (callbackData?.startsWith('sm_pay_transfer_')) {
+    const smAmount = parseInt(callbackData.replace('sm_pay_transfer_', ''));
+    const pkg = SM_PACKAGES.find(p => p.sm === smAmount);
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'sm_waiting_screenshot');
+    await sendMessage(botToken, chatId,
+      `📲 <b>Pago por Bolsa Mi Transfer</b>\n\n` +
+      `Paquete: <b>${pkg?.sm} SM - ${pkg?.cup} CUP</b>\n\n` +
+      `Envía <b>${pkg?.cup} CUP</b> a Mi Transfer:\n` +
+      `<code>${ADMIN_MI_TRANSFER}</code>\n\n` +
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`,
+      { reply_markup: { remove_keyboard: true } }
+    );
+    return;
+  }
+
+  // --- Venta de moneda: payment method ---
+  if (callbackData === 'venta_pay_card') {
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'venta_waiting_screenshot');
+    await sendMessage(botToken, chatId,
+      `💳 <b>Pago por Tarjeta CUP</b>\n\n` +
+      `Envía los CUP a la tarjeta:\n` +
+      `<code>${ADMIN_CUP_CARD}</code>\n\n` +
+      `⚠️ <b>Por favor confirma al número: ${ADMIN_CONFIRM_NUMBER}</b>\n\n` +
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`
+    );
+    return;
+  }
+
+  if (callbackData === 'venta_pay_transfer') {
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'venta_waiting_screenshot');
+    await sendMessage(botToken, chatId,
+      `📲 <b>Pago por Bolsa Mi Transfer</b>\n\n` +
+      `Envía los CUP a Mi Transfer:\n` +
+      `<code>${ADMIN_MI_TRANSFER}</code>\n\n` +
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`
+    );
+    return;
+  }
+
+  // --- Pago realizado (generic) ---
+  if (callbackData === 'payment_done') {
+    await answerCallbackQuery(botToken, callbackQuery.id, '📸 Envía la captura');
+    await sendMessage(botToken, chatId, '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.');
     return;
   }
 
