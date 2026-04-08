@@ -312,7 +312,8 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
   if (step === 'venta_waiting_screenshot') {
     if (!message.photo) {
       await sendMessage(botToken, chatId,
-        '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.\n\n<i>Envía ❌ Cancelar para volver.</i>');
+        '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.',
+        { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } });
       return;
     }
   }
