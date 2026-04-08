@@ -6,34 +6,6 @@ const MIN_REMAINING_MS = 5_000;
 
 const REQUIRED_CHANNEL_LINK = 'https://t.me/+KsLnyjMV579jM2Ix';
 
-// Payment config
-const ADMIN_CUP_CARD = '9204-0699-9692-9675';
-const ADMIN_CONFIRM_NUMBER = '58613666';
-const ADMIN_MI_TRANSFER = '58613666';
-const ADMIN_USDT_WALLET = '0xD64Ea37111d1926C1015091a6D241996946A29B0';
-
-const SM_PACKAGES = [
-  { sm: 120, cup: 400 },
-  { sm: 240, cup: 1000 },
-  { sm: 370, cup: 1300 },
-];
-
-// Services config
-const SERVICES = [
-  { id: 'netflix_srv', name: 'Servicio Netflix', cup: 2000, emoji: '🎬' },
-  { id: 'netflix_acc', name: 'Cuenta Netflix (Mes)', cup: 6200, emoji: '🎬' },
-  { id: 'deportes', name: 'Transmisión Deportiva', cup: 2500, emoji: '⚽' },
-  { id: 'tv_intl', name: 'TV Internacional (Mes)', cup: 4000, emoji: '📺' },
-  { id: 'peliculas', name: 'Películas y Series', cup: 2500, emoji: '🎥' },
-  { id: 'tiktok', name: 'Instalación de TikTok', cup: 1500, emoji: '📱' },
-];
-
-const TELEGRAM_PREMIUM = [
-  { id: 'tgp_3', name: '3 meses', cup: 7800 },
-  { id: 'tgp_6', name: '6 meses', cup: 10000 },
-  { id: 'tgp_12', name: '12 meses', cup: 18000 },
-];
-
 // Steps that can be cancelled back to tienda menu
 const CANCELLABLE_STEPS = [
   'tienda_cup', 'tienda_confirm_number', 'tienda_transfer',
@@ -41,6 +13,8 @@ const CANCELLABLE_STEPS = [
   'venta_amount', 'venta_payment_method', 'venta_waiting_screenshot',
   'sm_waiting_screenshot', 'svc_waiting_screenshot',
 ];
+
+const ADMIN_CHAT_ID = 5127721601;
 
 Deno.serve(async () => {
   const startTime = Date.now();
@@ -53,6 +27,28 @@ Deno.serve(async () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  // Load config from DB
+  const { data: configRows } = await supabase.from('bot_config').select('*');
+  const botConfig: Record<string, any> = {};
+  (configRows || []).forEach((r: any) => { botConfig[r.key] = r.value; });
+
+  const ADMIN_CUP_CARD = botConfig.admin_cup_card || '9204-0699-9692-9675';
+  const ADMIN_CONFIRM_NUMBER = botConfig.admin_confirm_number || '58613666';
+  const ADMIN_MI_TRANSFER = botConfig.admin_mi_transfer || '58613666';
+  const ADMIN_USDT_WALLET = botConfig.admin_usdt_wallet || '0xD64Ea37111d1926C1015091a6D241996946A29B0';
+  const BUY_RATE = botConfig.buy_rate || 600;
+  const SELL_RATE = botConfig.sell_rate || 640;
+  const SM_PACKAGES = botConfig.sm_packages || [
+    { sm: 120, cup: 400 },
+    { sm: 240, cup: 1000 },
+    { sm: 370, cup: 1300 },
+  ];
+
+  // Load services from DB
+  const { data: svcRows } = await supabase.from('bot_services').select('*').eq('active', true).order('sort_order');
+  const SERVICES = (svcRows || []).filter((s: any) => s.category === 'service');
+  const TELEGRAM_PREMIUM = (svcRows || []).filter((s: any) => s.category === 'telegram_premium');
 
   let totalProcessed = 0;
 
@@ -100,9 +96,15 @@ Deno.serve(async () => {
     for (const update of updates) {
       try {
         if (update.message) {
-          await handleMessage(BOT_TOKEN, supabase, update.message);
+          await handleMessage(BOT_TOKEN, supabase, update.message, {
+            ADMIN_CUP_CARD, ADMIN_CONFIRM_NUMBER, ADMIN_MI_TRANSFER, ADMIN_USDT_WALLET,
+            BUY_RATE, SELL_RATE, SM_PACKAGES, SERVICES, TELEGRAM_PREMIUM,
+          });
         } else if (update.callback_query) {
-          await handleCallbackQuery(BOT_TOKEN, supabase, update.callback_query);
+          await handleCallbackQuery(BOT_TOKEN, supabase, update.callback_query, {
+            ADMIN_CUP_CARD, ADMIN_CONFIRM_NUMBER, ADMIN_MI_TRANSFER, ADMIN_USDT_WALLET,
+            BUY_RATE, SELL_RATE, SM_PACKAGES, SERVICES, TELEGRAM_PREMIUM,
+          });
         }
       } catch (e) {
         console.error('Error processing update:', e);
@@ -129,6 +131,21 @@ async function sendMessage(botToken: string, chatId: number, text: string, extra
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML', ...extra }),
+  });
+}
+
+async function forwardPhotoToAdmin(botToken: string, fromChatId: number, messageId: number, caption: string) {
+  // Send info message to admin first
+  await sendMessage(botToken, ADMIN_CHAT_ID, caption);
+  // Forward the actual photo
+  await fetch(`${TELEGRAM_API}/bot${botToken}/forwardMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: ADMIN_CHAT_ID,
+      from_chat_id: fromChatId,
+      message_id: messageId,
+    }),
   });
 }
 
@@ -179,11 +196,14 @@ async function sendTiendaMenu(botToken: string, chatId: number, text: string) {
 
 // --- Handlers ---
 
-async function handleMessage(botToken: string, supabase: any, message: any) {
+async function handleMessage(botToken: string, supabase: any, message: any, cfg: any) {
   const chatId = message.chat.id;
   const text = message.text ?? '';
   const username = message.from?.username;
   const firstName = message.from?.first_name;
+
+  const { ADMIN_CUP_CARD, ADMIN_CONFIRM_NUMBER, ADMIN_MI_TRANSFER, ADMIN_USDT_WALLET,
+    BUY_RATE, SELL_RATE, SM_PACKAGES, SERVICES, TELEGRAM_PREMIUM } = cfg;
 
   if (text === '/start') {
     await upsertUserState(supabase, chatId, username, firstName, 'awaiting_join');
@@ -214,7 +234,7 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
 
   const step = userState?.step;
 
-  // --- Global cancel: if user sends ❌ Cancelar in any cancellable step ---
+  // --- Global cancel ---
   if (text === '❌ Cancelar' && CANCELLABLE_STEPS.includes(step)) {
     await upsertUserState(supabase, chatId, username, firstName, 'tienda_menu');
     await sendTiendaMenu(botToken, chatId, '🚫 <b>Solicitud cancelada.</b>\n\nSelecciona una opción:');
@@ -223,6 +243,12 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
 
   // --- Photo handler for screenshot steps ---
   if (message.photo && (step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'venta_waiting_screenshot' || step === 'svc_waiting_screenshot')) {
+    // Forward to admin
+    const userLabel = username ? `@${username}` : firstName || `Chat ${chatId}`;
+    await forwardPhotoToAdmin(botToken, chatId, message.message_id,
+      `📸 <b>Nueva captura de pago</b>\n\nDe: ${userLabel}\nPaso: ${step}\nChat ID: ${chatId}`
+    );
+
     await upsertUserState(supabase, chatId, username, firstName, 'tienda_menu');
     await sendTiendaMenu(botToken, chatId,
       '✅ <b>¡Captura recibida!</b>\n\n' +
@@ -285,7 +311,7 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
     await sendMessage(botToken, chatId,
       `🪙 <b>Compra de Moneda</b>\n\n` +
       `Monto a comprar: <b>${amount} USDT</b>\n` +
-      `Debes pagar: <b>${parseFloat(amount || '0') * 600} CUP</b>\n\n` +
+      `Debes pagar: <b>${parseFloat(amount || '0') * BUY_RATE} CUP</b>\n\n` +
       `📤 Envía los USDT a la siguiente wallet:\n` +
       `<code>${ADMIN_USDT_WALLET}</code>\n\n` +
       `📸 Después de enviar, manda una <b>captura de pantalla</b> de la transferencia.`,
@@ -303,12 +329,12 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
   // --- Venta de moneda: user sends USDT amount ---
   if (step === 'venta_amount') {
     const usdtAmount = parseFloat(text.trim() || '0');
-    const cupAmount = usdtAmount * 640;
+    const cupAmount = usdtAmount * SELL_RATE;
     await upsertUserState(supabase, chatId, username, firstName, 'venta_payment_method');
     await sendMessage(botToken, chatId,
       `💰 <b>Venta de Moneda</b>\n\n` +
       `Monto: <b>${usdtAmount} USDT</b> = <b>${cupAmount} CUP</b>\n` +
-      `(Tasa: 1 USDT = 640 CUP)\n\n` +
+      `(Tasa: 1 USDT = ${SELL_RATE} CUP)\n\n` +
       `Debes pagar <b>${cupAmount} CUP</b> al método que elijas.\n\n` +
       `¿Cómo deseas pagar?`,
       {
@@ -324,28 +350,8 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
     return;
   }
 
-  // --- Venta de moneda: waiting for screenshot ---
-  if (step === 'venta_waiting_screenshot') {
-    if (!message.photo) {
-      await sendMessage(botToken, chatId,
-        '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.',
-        { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } });
-      return;
-    }
-  }
-
-  // --- SM: waiting for screenshot ---
-  if (step === 'sm_waiting_screenshot') {
-    if (!message.photo) {
-      await sendMessage(botToken, chatId,
-        '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.',
-        { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } });
-      return;
-    }
-  }
-
-  // --- Compra: waiting for screenshot ---
-  if (step === 'compra_waiting_screenshot') {
+  // --- Waiting for screenshots (non-photo messages) ---
+  if (step === 'venta_waiting_screenshot' || step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'svc_waiting_screenshot') {
     if (!message.photo) {
       await sendMessage(botToken, chatId,
         '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.',
@@ -416,14 +422,14 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
 
   if (step === 'tienda_menu') {
     if (text === '📦 Servicios') {
-      const svcList = SERVICES.map(s => `${s.emoji} ${s.name}: <b>${s.cup} CUP</b>`).join('\n');
-      const tgpList = TELEGRAM_PREMIUM.map(t => `   • ${t.name}: <b>${t.cup} CUP</b>`).join('\n');
+      const svcList = SERVICES.map((s: any) => `${s.emoji} ${s.name}: <b>${s.cup} CUP</b>`).join('\n');
+      const tgpList = TELEGRAM_PREMIUM.map((t: any) => `   • ${t.name}: <b>${t.cup} CUP</b>`).join('\n');
       await sendMessage(botToken, chatId,
         `⚠️ <b>Servicios Tecnológicos</b>\n\n${svcList}\n\n✨ <b>Telegram Premium:</b>\n${tgpList}\n\nElige un servicio:`,
         {
           reply_markup: {
             inline_keyboard: [
-              ...SERVICES.map(s => [{ text: `${s.emoji} ${s.name} - ${s.cup} CUP`, callback_data: `svc_${s.id}` }]),
+              ...SERVICES.map((s: any) => [{ text: `${s.emoji} ${s.name} - ${s.cup} CUP`, callback_data: `svc_${s.id}` }]),
               [{ text: '✨ Telegram Premium', callback_data: 'svc_tgp_menu' }],
               [{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }],
             ],
@@ -434,14 +440,14 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
     }
 
     if (text === '💵 Venta de SM') {
-      const packagesText = SM_PACKAGES.map((p, i) => `${i + 1}. <b>${p.sm} SM</b> x <b>${p.cup} CUP</b>`).join('\n');
+      const packagesText = SM_PACKAGES.map((p: any, i: number) => `${i + 1}. <b>${p.sm} SM</b> x <b>${p.cup} CUP</b>`).join('\n');
       await sendMessage(botToken, chatId,
         `💵 <b>Venta de Saldo Móvil</b>\n\n` +
         `Elige un paquete:\n\n${packagesText}`,
         {
           reply_markup: {
             inline_keyboard: [
-              ...SM_PACKAGES.map((p) => [
+              ...SM_PACKAGES.map((p: any) => [
                 { text: `📱 ${p.sm} SM - ${p.cup} CUP`, callback_data: `sm_pkg_${p.sm}` },
               ]),
               [{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }],
@@ -456,7 +462,7 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
       await sendMessage(botToken, chatId,
         `💰 <b>Venta de Moneda</b>\n\n` +
         `El administrador vende:\n` +
-        `<b>1 USDT = 640 CUP</b>\n\n` +
+        `<b>1 USDT = ${SELL_RATE} CUP</b>\n\n` +
         `📝 Envía la cantidad de <b>USDT</b> que deseas comprar:`,
         { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
       );
@@ -468,7 +474,7 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
       await sendMessage(botToken, chatId,
         `🪙 <b>Compra de Moneda</b>\n\n` +
         `Compramos:\n` +
-        `<b>1 USDT = 600 CUP</b>\n\n` +
+        `<b>1 USDT = ${BUY_RATE} CUP</b>\n\n` +
         `📝 Envía la cantidad de <b>USDT</b> que deseas vender:`,
         { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
       );
@@ -490,11 +496,14 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
   await sendMessage(botToken, chatId, 'Escribe /start para comenzar.');
 }
 
-async function handleCallbackQuery(botToken: string, supabase: any, callbackQuery: any) {
+async function handleCallbackQuery(botToken: string, supabase: any, callbackQuery: any, cfg: any) {
   const chatId = callbackQuery.message.chat.id;
   const callbackData = callbackQuery.data;
   const username = callbackQuery.from?.username;
   const firstName = callbackQuery.from?.first_name;
+
+  const { ADMIN_CUP_CARD, ADMIN_CONFIRM_NUMBER, ADMIN_MI_TRANSFER,
+    SM_PACKAGES, SERVICES, TELEGRAM_PREMIUM } = cfg;
 
   // --- Cancel to tienda menu ---
   if (callbackData === 'cancel_to_tienda') {
@@ -517,7 +526,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
   // --- SM package selection ---
   if (callbackData?.startsWith('sm_pkg_')) {
     const smAmount = parseInt(callbackData.replace('sm_pkg_', ''));
-    const pkg = SM_PACKAGES.find(p => p.sm === smAmount);
+    const pkg = SM_PACKAGES.find((p: any) => p.sm === smAmount);
     if (!pkg) {
       await answerCallbackQuery(botToken, callbackQuery.id, '❌ Paquete no encontrado');
       return;
@@ -543,7 +552,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
   // --- SM payment by card ---
   if (callbackData?.startsWith('sm_pay_card_')) {
     const smAmount = parseInt(callbackData.replace('sm_pay_card_', ''));
-    const pkg = SM_PACKAGES.find(p => p.sm === smAmount);
+    const pkg = SM_PACKAGES.find((p: any) => p.sm === smAmount);
     await answerCallbackQuery(botToken, callbackQuery.id);
     await upsertUserState(supabase, chatId, username, firstName, 'sm_waiting_screenshot');
     await sendMessage(botToken, chatId,
@@ -561,7 +570,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
   // --- SM payment by Mi Transfer ---
   if (callbackData?.startsWith('sm_pay_transfer_')) {
     const smAmount = parseInt(callbackData.replace('sm_pay_transfer_', ''));
-    const pkg = SM_PACKAGES.find(p => p.sm === smAmount);
+    const pkg = SM_PACKAGES.find((p: any) => p.sm === smAmount);
     await answerCallbackQuery(botToken, callbackQuery.id);
     await upsertUserState(supabase, chatId, username, firstName, 'sm_waiting_screenshot');
     await sendMessage(botToken, chatId,
@@ -606,7 +615,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
   // --- Service selection ---
   if (callbackData?.startsWith('svc_') && !callbackData.startsWith('svc_tgp') && !callbackData.startsWith('svc_pay_')) {
     const svcId = callbackData.replace('svc_', '');
-    const svc = SERVICES.find(s => s.id === svcId);
+    const svc = SERVICES.find((s: any) => s.id === svcId);
     if (!svc) { await answerCallbackQuery(botToken, callbackQuery.id, '❌ Servicio no encontrado'); return; }
     await answerCallbackQuery(botToken, callbackQuery.id, `${svc.emoji} ${svc.name}`);
     await sendMessage(botToken, chatId,
@@ -632,7 +641,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
       {
         reply_markup: {
           inline_keyboard: [
-            ...TELEGRAM_PREMIUM.map(t => [{ text: `${t.name} - ${t.cup} CUP`, callback_data: `svc_tgp_${t.id}` }]),
+            ...TELEGRAM_PREMIUM.map((t: any) => [{ text: `${t.name} - ${t.cup} CUP`, callback_data: `svc_tgp_${t.id}` }]),
             [{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }],
           ],
         },
@@ -644,7 +653,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
   // --- Telegram Premium duration selected ---
   if (callbackData?.startsWith('svc_tgp_') && !callbackData.startsWith('svc_tgp_menu') && !callbackData.startsWith('svc_tgp_pay_')) {
     const tgpId = callbackData.replace('svc_tgp_', '');
-    const pkg = TELEGRAM_PREMIUM.find(t => t.id === tgpId);
+    const pkg = TELEGRAM_PREMIUM.find((t: any) => t.id === tgpId);
     if (!pkg) { await answerCallbackQuery(botToken, callbackQuery.id, '❌ No encontrado'); return; }
     await answerCallbackQuery(botToken, callbackQuery.id, `✨ ${pkg.name}`);
     await sendMessage(botToken, chatId,
@@ -665,7 +674,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
   // --- Service payment by card ---
   if (callbackData?.startsWith('svc_pay_card_')) {
     const svcId = callbackData.replace('svc_pay_card_', '');
-    const svc = SERVICES.find(s => s.id === svcId);
+    const svc = SERVICES.find((s: any) => s.id === svcId);
     await answerCallbackQuery(botToken, callbackQuery.id);
     await upsertUserState(supabase, chatId, username, firstName, 'svc_waiting_screenshot');
     await sendMessage(botToken, chatId,
@@ -683,7 +692,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
   // --- Service payment by Mi Transfer ---
   if (callbackData?.startsWith('svc_pay_transfer_')) {
     const svcId = callbackData.replace('svc_pay_transfer_', '');
-    const svc = SERVICES.find(s => s.id === svcId);
+    const svc = SERVICES.find((s: any) => s.id === svcId);
     await answerCallbackQuery(botToken, callbackQuery.id);
     await upsertUserState(supabase, chatId, username, firstName, 'svc_waiting_screenshot');
     await sendMessage(botToken, chatId,
@@ -700,7 +709,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
   // --- Telegram Premium payment by card ---
   if (callbackData?.startsWith('svc_tgp_pay_card_')) {
     const tgpId = callbackData.replace('svc_tgp_pay_card_', '');
-    const pkg = TELEGRAM_PREMIUM.find(t => t.id === tgpId);
+    const pkg = TELEGRAM_PREMIUM.find((t: any) => t.id === tgpId);
     await answerCallbackQuery(botToken, callbackQuery.id);
     await upsertUserState(supabase, chatId, username, firstName, 'svc_waiting_screenshot');
     await sendMessage(botToken, chatId,
@@ -718,7 +727,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
   // --- Telegram Premium payment by Mi Transfer ---
   if (callbackData?.startsWith('svc_tgp_pay_transfer_')) {
     const tgpId = callbackData.replace('svc_tgp_pay_transfer_', '');
-    const pkg = TELEGRAM_PREMIUM.find(t => t.id === tgpId);
+    const pkg = TELEGRAM_PREMIUM.find((t: any) => t.id === tgpId);
     await answerCallbackQuery(botToken, callbackQuery.id);
     await upsertUserState(supabase, chatId, username, firstName, 'svc_waiting_screenshot');
     await sendMessage(botToken, chatId,
