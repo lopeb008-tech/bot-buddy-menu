@@ -241,7 +241,8 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
 
     await upsertUserState(supabase, chatId, username, firstName, 'tienda_transfer');
     await sendMessage(botToken, chatId,
-      '✅ Número a confirmar guardado.\n\n💳 Ahora envía tu <b>monedero Mi Transfer</b>:\n\n<i>Envía ❌ Cancelar para volver.</i>');
+      '✅ Número a confirmar guardado.\n\n💳 Ahora envía tu <b>monedero Mi Transfer</b>:',
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } });
     return;
   }
 
