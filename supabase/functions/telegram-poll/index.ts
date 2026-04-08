@@ -18,12 +18,28 @@ const SM_PACKAGES = [
   { sm: 370, cup: 1300 },
 ];
 
+// Services config
+const SERVICES = [
+  { id: 'netflix_srv', name: 'Servicio Netflix', cup: 2000, emoji: '🎬' },
+  { id: 'netflix_acc', name: 'Cuenta Netflix (Mes)', cup: 6200, emoji: '🎬' },
+  { id: 'deportes', name: 'Transmisión Deportiva', cup: 2500, emoji: '⚽' },
+  { id: 'tv_intl', name: 'TV Internacional (Mes)', cup: 4000, emoji: '📺' },
+  { id: 'peliculas', name: 'Películas y Series', cup: 2500, emoji: '🎥' },
+  { id: 'tiktok', name: 'Instalación de TikTok', cup: 1500, emoji: '📱' },
+];
+
+const TELEGRAM_PREMIUM = [
+  { id: 'tgp_3', name: '3 meses', cup: 7800 },
+  { id: 'tgp_6', name: '6 meses', cup: 10000 },
+  { id: 'tgp_12', name: '12 meses', cup: 18000 },
+];
+
 // Steps that can be cancelled back to tienda menu
 const CANCELLABLE_STEPS = [
   'tienda_cup', 'tienda_confirm_number', 'tienda_transfer',
   'compra_amount', 'compra_waiting_screenshot',
   'venta_amount', 'venta_payment_method', 'venta_waiting_screenshot',
-  'sm_waiting_screenshot',
+  'sm_waiting_screenshot', 'svc_waiting_screenshot',
 ];
 
 Deno.serve(async () => {
