@@ -358,9 +358,8 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
         await sendMessage(botToken, chatId,
           '🛍️ <b>Configuración de Tienda</b>\n\n' +
           'Antes de empezar necesitas configurar tus datos de pago.\n\n' +
-          '💳 Envía tu <b>número de tarjeta CUP</b>:\n\n' +
-          '<i>Envía ❌ Cancelar para volver.</i>',
-          { reply_markup: { remove_keyboard: true } }
+          '💳 Envía tu <b>número de tarjeta CUP</b>:',
+          { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
         );
       }
       return;
@@ -429,9 +428,8 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
         `💰 <b>Venta de Moneda</b>\n\n` +
         `El administrador vende:\n` +
         `<b>1 USDT = 640 CUP</b>\n\n` +
-        `📝 Envía la cantidad de <b>USDT</b> que deseas comprar:\n\n` +
-        `<i>Envía ❌ Cancelar para volver.</i>`,
-        { reply_markup: { remove_keyboard: true } }
+        `📝 Envía la cantidad de <b>USDT</b> que deseas comprar:`,
+        { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
       );
       await upsertUserState(supabase, chatId, username, firstName, 'venta_amount');
       return;
@@ -442,9 +440,8 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
         `🪙 <b>Compra de Moneda</b>\n\n` +
         `Compramos:\n` +
         `<b>1 USDT = 600 CUP</b>\n\n` +
-        `📝 Envía la cantidad de <b>USDT</b> que deseas vender:\n\n` +
-        `<i>Envía ❌ Cancelar para volver.</i>`,
-        { reply_markup: { remove_keyboard: true } }
+        `📝 Envía la cantidad de <b>USDT</b> que deseas vender:`,
+        { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
       );
       await upsertUserState(supabase, chatId, username, firstName, 'compra_amount');
       return;
@@ -526,9 +523,8 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
       `Envía <b>${pkg?.cup} CUP</b> a la tarjeta:\n` +
       `<code>${ADMIN_CUP_CARD}</code>\n\n` +
       `⚠️ <b>Por favor confirma al número: ${ADMIN_CONFIRM_NUMBER}</b>\n\n` +
-      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.\n\n` +
-      `<i>Envía ❌ Cancelar para volver.</i>`,
-      { reply_markup: { remove_keyboard: true } }
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`,
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
     );
     return;
   }
@@ -544,9 +540,8 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
       `Paquete: <b>${pkg?.sm} SM - ${pkg?.cup} CUP</b>\n\n` +
       `Envía <b>${pkg?.cup} CUP</b> a Mi Transfer:\n` +
       `<code>${ADMIN_MI_TRANSFER}</code>\n\n` +
-      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.\n\n` +
-      `<i>Envía ❌ Cancelar para volver.</i>`,
-      { reply_markup: { remove_keyboard: true } }
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`,
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
     );
     return;
   }
@@ -560,8 +555,8 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
       `Envía los CUP a la tarjeta:\n` +
       `<code>${ADMIN_CUP_CARD}</code>\n\n` +
       `⚠️ <b>Por favor confirma al número: ${ADMIN_CONFIRM_NUMBER}</b>\n\n` +
-      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.\n\n` +
-      `<i>Envía ❌ Cancelar para volver.</i>`
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`,
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
     );
     return;
   }
@@ -573,8 +568,8 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
       `📲 <b>Pago por Bolsa Mi Transfer</b>\n\n` +
       `Envía los CUP a Mi Transfer:\n` +
       `<code>${ADMIN_MI_TRANSFER}</code>\n\n` +
-      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.\n\n` +
-      `<i>Envía ❌ Cancelar para volver.</i>`
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`,
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
     );
     return;
   }
