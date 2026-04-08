@@ -18,12 +18,28 @@ const SM_PACKAGES = [
   { sm: 370, cup: 1300 },
 ];
 
+// Services config
+const SERVICES = [
+  { id: 'netflix_srv', name: 'Servicio Netflix', cup: 2000, emoji: '🎬' },
+  { id: 'netflix_acc', name: 'Cuenta Netflix (Mes)', cup: 6200, emoji: '🎬' },
+  { id: 'deportes', name: 'Transmisión Deportiva', cup: 2500, emoji: '⚽' },
+  { id: 'tv_intl', name: 'TV Internacional (Mes)', cup: 4000, emoji: '📺' },
+  { id: 'peliculas', name: 'Películas y Series', cup: 2500, emoji: '🎥' },
+  { id: 'tiktok', name: 'Instalación de TikTok', cup: 1500, emoji: '📱' },
+];
+
+const TELEGRAM_PREMIUM = [
+  { id: 'tgp_3', name: '3 meses', cup: 7800 },
+  { id: 'tgp_6', name: '6 meses', cup: 10000 },
+  { id: 'tgp_12', name: '12 meses', cup: 18000 },
+];
+
 // Steps that can be cancelled back to tienda menu
 const CANCELLABLE_STEPS = [
   'tienda_cup', 'tienda_confirm_number', 'tienda_transfer',
   'compra_amount', 'compra_waiting_screenshot',
   'venta_amount', 'venta_payment_method', 'venta_waiting_screenshot',
-  'sm_waiting_screenshot',
+  'sm_waiting_screenshot', 'svc_waiting_screenshot',
 ];
 
 Deno.serve(async () => {
@@ -206,7 +222,7 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
   }
 
   // --- Photo handler for screenshot steps ---
-  if (message.photo && (step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'venta_waiting_screenshot')) {
+  if (message.photo && (step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'venta_waiting_screenshot' || step === 'svc_waiting_screenshot')) {
     await upsertUserState(supabase, chatId, username, firstName, 'tienda_menu');
     await sendTiendaMenu(botToken, chatId,
       '✅ <b>¡Captura recibida!</b>\n\n' +
@@ -400,7 +416,20 @@ async function handleMessage(botToken: string, supabase: any, message: any) {
 
   if (step === 'tienda_menu') {
     if (text === '📦 Servicios') {
-      await sendMessage(botToken, chatId, '📦 <b>Servicios</b>\n\nPróximamente podrás acceder a nuestros servicios aquí.');
+      const svcList = SERVICES.map(s => `${s.emoji} ${s.name}: <b>${s.cup} CUP</b>`).join('\n');
+      const tgpList = TELEGRAM_PREMIUM.map(t => `   • ${t.name}: <b>${t.cup} CUP</b>`).join('\n');
+      await sendMessage(botToken, chatId,
+        `⚠️ <b>Servicios Tecnológicos</b>\n\n${svcList}\n\n✨ <b>Telegram Premium:</b>\n${tgpList}\n\nElige un servicio:`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              ...SERVICES.map(s => [{ text: `${s.emoji} ${s.name} - ${s.cup} CUP`, callback_data: `svc_${s.id}` }]),
+              [{ text: '✨ Telegram Premium', callback_data: 'svc_tgp_menu' }],
+              [{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }],
+            ],
+          },
+        }
+      );
       return;
     }
 
@@ -567,6 +596,135 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     await sendMessage(botToken, chatId,
       `📲 <b>Pago por Bolsa Mi Transfer</b>\n\n` +
       `Envía los CUP a Mi Transfer:\n` +
+      `<code>${ADMIN_MI_TRANSFER}</code>\n\n` +
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`,
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
+    );
+    return;
+  }
+
+  // --- Service selection ---
+  if (callbackData?.startsWith('svc_') && !callbackData.startsWith('svc_tgp') && !callbackData.startsWith('svc_pay_')) {
+    const svcId = callbackData.replace('svc_', '');
+    const svc = SERVICES.find(s => s.id === svcId);
+    if (!svc) { await answerCallbackQuery(botToken, callbackQuery.id, '❌ Servicio no encontrado'); return; }
+    await answerCallbackQuery(botToken, callbackQuery.id, `${svc.emoji} ${svc.name}`);
+    await sendMessage(botToken, chatId,
+      `${svc.emoji} <b>${svc.name}</b>\n\nPrecio: <b>${svc.cup} CUP</b>\n\n¿Cómo deseas pagar?`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💳 Tarjeta CUP', callback_data: `svc_pay_card_${svc.id}` }],
+            [{ text: '📲 Bolsa Mi Transfer', callback_data: `svc_pay_transfer_${svc.id}` }],
+            [{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }],
+          ],
+        },
+      }
+    );
+    return;
+  }
+
+  // --- Telegram Premium menu ---
+  if (callbackData === 'svc_tgp_menu') {
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await sendMessage(botToken, chatId,
+      `✨ <b>Telegram Premium</b>\n\nElige la duración:`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            ...TELEGRAM_PREMIUM.map(t => [{ text: `${t.name} - ${t.cup} CUP`, callback_data: `svc_tgp_${t.id}` }]),
+            [{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }],
+          ],
+        },
+      }
+    );
+    return;
+  }
+
+  // --- Telegram Premium duration selected ---
+  if (callbackData?.startsWith('svc_tgp_') && !callbackData.startsWith('svc_tgp_menu') && !callbackData.startsWith('svc_tgp_pay_')) {
+    const tgpId = callbackData.replace('svc_tgp_', '');
+    const pkg = TELEGRAM_PREMIUM.find(t => t.id === tgpId);
+    if (!pkg) { await answerCallbackQuery(botToken, callbackQuery.id, '❌ No encontrado'); return; }
+    await answerCallbackQuery(botToken, callbackQuery.id, `✨ ${pkg.name}`);
+    await sendMessage(botToken, chatId,
+      `✨ <b>Telegram Premium - ${pkg.name}</b>\n\nPrecio: <b>${pkg.cup} CUP</b>\n\n¿Cómo deseas pagar?`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💳 Tarjeta CUP', callback_data: `svc_tgp_pay_card_${pkg.id}` }],
+            [{ text: '📲 Bolsa Mi Transfer', callback_data: `svc_tgp_pay_transfer_${pkg.id}` }],
+            [{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }],
+          ],
+        },
+      }
+    );
+    return;
+  }
+
+  // --- Service payment by card ---
+  if (callbackData?.startsWith('svc_pay_card_')) {
+    const svcId = callbackData.replace('svc_pay_card_', '');
+    const svc = SERVICES.find(s => s.id === svcId);
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'svc_waiting_screenshot');
+    await sendMessage(botToken, chatId,
+      `💳 <b>Pago por Tarjeta CUP</b>\n\n` +
+      `Servicio: <b>${svc?.name} - ${svc?.cup} CUP</b>\n\n` +
+      `Envía <b>${svc?.cup} CUP</b> a la tarjeta:\n` +
+      `<code>${ADMIN_CUP_CARD}</code>\n\n` +
+      `⚠️ <b>Por favor confirma al número: ${ADMIN_CONFIRM_NUMBER}</b>\n\n` +
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`,
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
+    );
+    return;
+  }
+
+  // --- Service payment by Mi Transfer ---
+  if (callbackData?.startsWith('svc_pay_transfer_')) {
+    const svcId = callbackData.replace('svc_pay_transfer_', '');
+    const svc = SERVICES.find(s => s.id === svcId);
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'svc_waiting_screenshot');
+    await sendMessage(botToken, chatId,
+      `📲 <b>Pago por Bolsa Mi Transfer</b>\n\n` +
+      `Servicio: <b>${svc?.name} - ${svc?.cup} CUP</b>\n\n` +
+      `Envía <b>${svc?.cup} CUP</b> a Mi Transfer:\n` +
+      `<code>${ADMIN_MI_TRANSFER}</code>\n\n` +
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`,
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
+    );
+    return;
+  }
+
+  // --- Telegram Premium payment by card ---
+  if (callbackData?.startsWith('svc_tgp_pay_card_')) {
+    const tgpId = callbackData.replace('svc_tgp_pay_card_', '');
+    const pkg = TELEGRAM_PREMIUM.find(t => t.id === tgpId);
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'svc_waiting_screenshot');
+    await sendMessage(botToken, chatId,
+      `💳 <b>Pago por Tarjeta CUP</b>\n\n` +
+      `Servicio: <b>Telegram Premium ${pkg?.name} - ${pkg?.cup} CUP</b>\n\n` +
+      `Envía <b>${pkg?.cup} CUP</b> a la tarjeta:\n` +
+      `<code>${ADMIN_CUP_CARD}</code>\n\n` +
+      `⚠️ <b>Por favor confirma al número: ${ADMIN_CONFIRM_NUMBER}</b>\n\n` +
+      `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`,
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
+    );
+    return;
+  }
+
+  // --- Telegram Premium payment by Mi Transfer ---
+  if (callbackData?.startsWith('svc_tgp_pay_transfer_')) {
+    const tgpId = callbackData.replace('svc_tgp_pay_transfer_', '');
+    const pkg = TELEGRAM_PREMIUM.find(t => t.id === tgpId);
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'svc_waiting_screenshot');
+    await sendMessage(botToken, chatId,
+      `📲 <b>Pago por Bolsa Mi Transfer</b>\n\n` +
+      `Servicio: <b>Telegram Premium ${pkg?.name} - ${pkg?.cup} CUP</b>\n\n` +
+      `Envía <b>${pkg?.cup} CUP</b> a Mi Transfer:\n` +
       `<code>${ADMIN_MI_TRANSFER}</code>\n\n` +
       `📸 Después de pagar, envía una <b>captura de pantalla</b> de la transferencia.`,
       { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
