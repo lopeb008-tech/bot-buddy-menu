@@ -248,6 +248,16 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
     return;
   }
 
+  // --- Admin text input handlers ---
+  if (step?.startsWith('admin_edit_') || step?.startsWith('admin_add_svc_')) {
+    if (!ADMIN_IDS.includes(chatId)) {
+      await upsertUserState(supabase, chatId, username, firstName, 'menu');
+      return;
+    }
+    await handleAdminTextInput(botToken, supabase, chatId, username, firstName, step, text);
+    return;
+  }
+
   // --- Photo handler for screenshot steps ---
   if (message.photo && (step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'venta_waiting_screenshot' || step === 'svc_waiting_screenshot')) {
     // Forward to admin
