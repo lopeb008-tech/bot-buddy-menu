@@ -730,7 +730,28 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     return;
   }
 
-  // --- SM package selection ---
+  if (callbackData === 'admin_svc_add_default_emoji') {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    const { data: tempRow } = await supabase.from('bot_config').select('value').eq('key', `admin_temp_${chatId}`).single();
+    const temp = tempRow?.value || {};
+    temp.emoji = '📦';
+    await supabase.from('bot_config').upsert({ key: `admin_temp_${chatId}`, value: temp, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    await upsertUserState(supabase, chatId, username, firstName, 'menu');
+    await sendMessage(botToken, chatId,
+      `📦 <b>Nuevo servicio:</b>\n\n${temp.emoji} ${temp.name}: <b>${temp.cup} CUP</b>\n\nSelecciona la categoría:`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⚡ Servicio', callback_data: 'admin_svc_add_cat_service' }],
+            [{ text: '✨ Telegram Premium', callback_data: 'admin_svc_add_cat_tgp' }],
+            [{ text: '❌ Cancelar', callback_data: 'admin_services' }],
+          ],
+        },
+      }
+    );
+    return;
+  }
   if (callbackData?.startsWith('sm_pkg_')) {
     const smAmount = parseInt(callbackData.replace('sm_pkg_', ''));
     const pkg = SM_PACKAGES.find((p: any) => p.sm === smAmount);
