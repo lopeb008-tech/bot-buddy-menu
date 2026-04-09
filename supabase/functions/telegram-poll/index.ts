@@ -14,6 +14,12 @@ const CANCELLABLE_STEPS = [
   'sm_waiting_screenshot', 'svc_waiting_screenshot',
 ];
 
+// Admin steps
+const ADMIN_STEPS = [
+  'admin_edit_buy_rate', 'admin_edit_sell_rate',
+  'admin_add_svc_id', 'admin_add_svc_name', 'admin_add_svc_cup', 'admin_add_svc_emoji',
+];
+
 const ADMIN_CHAT_ID = 5127721601;
 const ADMIN_IDS = [5075629326, 5127721601];
 
