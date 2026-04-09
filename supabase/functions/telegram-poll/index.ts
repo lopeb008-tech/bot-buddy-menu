@@ -15,6 +15,7 @@ const CANCELLABLE_STEPS = [
 ];
 
 const ADMIN_CHAT_ID = 5127721601;
+const ADMIN_IDS = [5075629326, 5127721601];
 
 Deno.serve(async () => {
   const startTime = Date.now();
@@ -399,13 +400,43 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
       const transfer = config?.mi_transfer ?? '❌ No configurado';
       const deals = config?.successful_deals ?? 0;
 
-      await sendMessage(botToken, chatId,
-        `👤 <b>Mi Cuenta</b>\n\n` +
-        `💳 <b>Tarjeta CUP:</b> ${cup}\n` +
-        `📱 <b>Número a confirmar:</b> ${confirm}\n` +
-        `🪙 <b>Monedero Mi Transfer:</b> ${transfer}\n\n` +
-        `✅ <b>Negocios exitosos:</b> ${deals}`
-      );
+      const isAdmin = ADMIN_IDS.includes(chatId);
+
+      if (isAdmin) {
+        // Generate admin token
+        const token = crypto.randomUUID();
+        await supabase.from('bot_config').upsert({
+          key: 'admin_token',
+          value: token,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'key' });
+
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const projectRef = supabaseUrl.replace('https://', '').replace('.supabase.co', '');
+
+        await sendMessage(botToken, chatId,
+          `👤 <b>Mi Cuenta</b>\n\n` +
+          `💳 <b>Tarjeta CUP:</b> ${cup}\n` +
+          `📱 <b>Número a confirmar:</b> ${confirm}\n` +
+          `🪙 <b>Monedero Mi Transfer:</b> ${transfer}\n\n` +
+          `✅ <b>Negocios exitosos:</b> ${deals}`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '⚙️ Panel de Administrador', callback_data: 'open_admin_panel' }],
+              ],
+            },
+          }
+        );
+      } else {
+        await sendMessage(botToken, chatId,
+          `👤 <b>Mi Cuenta</b>\n\n` +
+          `💳 <b>Tarjeta CUP:</b> ${cup}\n` +
+          `📱 <b>Número a confirmar:</b> ${confirm}\n` +
+          `🪙 <b>Monedero Mi Transfer:</b> ${transfer}\n\n` +
+          `✅ <b>Negocios exitosos:</b> ${deals}`
+        );
+      }
       return;
     }
 
@@ -519,6 +550,37 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     await upsertUserState(supabase, chatId, username, firstName, 'menu');
     await sendMainMenu(botToken, chatId,
       '🎉 <b>¡Verificación exitosa!</b>\n\nBienvenido al menú principal. Usa los botones de abajo para navegar.'
+    );
+    return;
+  }
+
+  // --- Admin panel ---
+  if (callbackData === 'open_admin_panel') {
+    if (!ADMIN_IDS.includes(chatId)) {
+      await answerCallbackQuery(botToken, callbackQuery.id, '❌ No autorizado');
+      return;
+    }
+    // Get the stored token
+    const { data: tokenRow } = await supabase
+      .from('bot_config')
+      .select('value')
+      .eq('key', 'admin_token')
+      .single();
+    
+    const token = tokenRow?.value;
+    // Use the published/preview URL
+    const adminUrl = `https://id-preview--6cecd0e5-892d-48ed-8a9b-98d61ac2a96d.lovable.app/admin?token=${token}`;
+    
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await sendMessage(botToken, chatId,
+      `⚙️ <b>Panel de Administrador</b>\n\nHaz clic en el botón para acceder:`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔗 Abrir Panel Admin', url: adminUrl }],
+          ],
+        },
+      }
     );
     return;
   }

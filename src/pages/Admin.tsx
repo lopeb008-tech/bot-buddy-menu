@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, TrendingUp, Settings, Package, Plus, Trash2, Save, LogOut, Lock } from "lucide-react";
+import { Users, TrendingUp, Settings, Package, Plus, Trash2, Save, LogOut, ShieldAlert } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface BotService {
@@ -18,9 +19,11 @@ interface BotService {
 }
 
 const AdminPanel = () => {
-  const [password, setPassword] = useState("");
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token");
   const [authenticated, setAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [unauthorized, setUnauthorized] = useState(false);
 
   // Stats
   const [users, setUsers] = useState(0);
@@ -35,12 +38,12 @@ const AdminPanel = () => {
 
   const adminCall = useCallback(async (action: string, extra: Record<string, any> = {}) => {
     const { data, error } = await supabase.functions.invoke("admin-api", {
-      body: { action, password, ...extra },
+      body: { action, token, ...extra },
     });
     if (error) throw new Error(error.message);
     if (data?.error) throw new Error(data.error);
     return data;
-  }, [password]);
+  }, [token]);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -54,29 +57,23 @@ const AdminPanel = () => {
       setDeals(stats.deals);
       setConfig(cfg);
       setServices(svcs);
+      setAuthenticated(true);
     } catch (e: any) {
+      setUnauthorized(true);
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
   }, [adminCall]);
 
-  const handleLogin = async () => {
-    setLoading(true);
-    try {
-      await adminCall("get_stats");
-      setAuthenticated(true);
-      toast({ title: "✅ Acceso concedido" });
-    } catch {
-      toast({ title: "❌ Contraseña incorrecta", variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    if (authenticated) loadAll();
-  }, [authenticated, loadAll]);
+    if (!token) {
+      setLoading(false);
+      setUnauthorized(true);
+      return;
+    }
+    loadAll();
+  }, [token, loadAll]);
 
   const updateConfig = async (key: string, value: any) => {
     try {
@@ -127,25 +124,25 @@ const AdminPanel = () => {
     }
   };
 
-  if (!authenticated) {
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Verificando acceso...</p>
+      </div>
+    );
+  }
+
+  if (unauthorized || !authenticated) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="w-full max-w-sm">
           <CardHeader className="text-center">
-            <Lock className="w-10 h-10 mx-auto text-primary mb-2" />
-            <CardTitle>Panel de Administrador</CardTitle>
+            <ShieldAlert className="w-10 h-10 mx-auto text-destructive mb-2" />
+            <CardTitle>Acceso Restringido</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <Input
-              type="password"
-              placeholder="Contraseña"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleLogin()}
-            />
-            <Button onClick={handleLogin} disabled={loading} className="w-full">
-              {loading ? "Verificando..." : "Entrar"}
-            </Button>
+          <CardContent className="text-center text-muted-foreground">
+            <p>Este panel solo es accesible desde Telegram.</p>
+            <p className="mt-2 text-sm">Usa el botón <b>"⚙️ Panel de Administrador"</b> en tu cuenta del bot.</p>
           </CardContent>
         </Card>
       </div>
@@ -159,9 +156,6 @@ const AdminPanel = () => {
       {/* Header */}
       <header className="bg-primary text-primary-foreground px-4 py-3 flex items-center justify-between shadow-md">
         <h1 className="font-bold text-lg">⚙️ Panel Admin</h1>
-        <Button variant="ghost" size="sm" className="text-primary-foreground hover:bg-primary-foreground/20" onClick={() => { setAuthenticated(false); setPassword(""); }}>
-          <LogOut className="w-4 h-4 mr-1" /> Salir
-        </Button>
       </header>
 
       <div className="p-4 space-y-4 max-w-2xl mx-auto">
@@ -278,32 +272,6 @@ const AdminPanel = () => {
                     <Save className="w-4 h-4 mr-1" /> Guardar todo
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Admin payment info */}
-            <Card>
-              <CardHeader><CardTitle className="text-base">💳 Datos de Pago Admin</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {[
-                  { key: "admin_cup_card", label: "Tarjeta CUP" },
-                  { key: "admin_confirm_number", label: "Número a confirmar" },
-                  { key: "admin_mi_transfer", label: "Mi Transfer" },
-                  { key: "admin_usdt_wallet", label: "Wallet USDT" },
-                ].map(item => (
-                  <div key={item.key}>
-                    <label className="text-sm text-muted-foreground">{item.label}</label>
-                    <div className="flex gap-2 mt-1">
-                      <Input
-                        value={config[item.key] || ""}
-                        onChange={e => setConfig(prev => ({ ...prev, [item.key]: e.target.value }))}
-                      />
-                      <Button size="sm" onClick={() => updateConfig(item.key, config[item.key])}>
-                        <Save className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
               </CardContent>
             </Card>
           </TabsContent>
