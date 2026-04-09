@@ -554,6 +554,37 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     return;
   }
 
+  // --- Admin panel ---
+  if (callbackData === 'open_admin_panel') {
+    if (!ADMIN_IDS.includes(chatId)) {
+      await answerCallbackQuery(botToken, callbackQuery.id, '❌ No autorizado');
+      return;
+    }
+    // Get the stored token
+    const { data: tokenRow } = await supabase
+      .from('bot_config')
+      .select('value')
+      .eq('key', 'admin_token')
+      .single();
+    
+    const token = tokenRow?.value;
+    // Use the published/preview URL
+    const adminUrl = `https://id-preview--6cecd0e5-892d-48ed-8a9b-98d61ac2a96d.lovable.app/admin?token=${token}`;
+    
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await sendMessage(botToken, chatId,
+      `⚙️ <b>Panel de Administrador</b>\n\nHaz clic en el botón para acceder:`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔗 Abrir Panel Admin', url: adminUrl }],
+          ],
+        },
+      }
+    );
+    return;
+  }
+
   // --- SM package selection ---
   if (callbackData?.startsWith('sm_pkg_')) {
     const smAmount = parseInt(callbackData.replace('sm_pkg_', ''));
