@@ -16,18 +16,18 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { action, password } = body;
+    const { action, token } = body;
 
-    // Verify admin password
-    const { data: pwConfig } = await supabase
+    // Verify admin token
+    const { data: tokenConfig } = await supabase
       .from('bot_config')
       .select('value')
-      .eq('key', 'admin_password')
+      .eq('key', 'admin_token')
       .single();
 
-    const adminPassword = pwConfig?.value;
-    if (!password || password !== adminPassword) {
-      return new Response(JSON.stringify({ error: 'Contraseña incorrecta' }), {
+    const validToken = tokenConfig?.value;
+    if (!token || token !== validToken) {
+      return new Response(JSON.stringify({ error: 'No autorizado' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -59,6 +59,11 @@ Deno.serve(async (req) => {
     if (action === 'update_config') {
       const { key, value } = body;
       if (!key) return jsonResponse({ error: 'key required' }, 400);
+      // Don't allow editing admin payment data or token from panel
+      const protectedKeys = ['admin_cup_card', 'admin_confirm_number', 'admin_mi_transfer', 'admin_usdt_wallet', 'admin_token', 'admin_password'];
+      if (protectedKeys.includes(key)) {
+        return jsonResponse({ error: 'No se puede editar esta configuración' }, 403);
+      }
       await supabase.from('bot_config').upsert({
         key,
         value,
