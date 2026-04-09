@@ -546,34 +546,187 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     return;
   }
 
-  // --- Admin panel ---
-  if (callbackData === 'open_admin_panel') {
+  // --- Admin panel (in-Telegram) ---
+  if (callbackData === 'admin_panel') {
     if (!ADMIN_IDS.includes(chatId)) {
       await answerCallbackQuery(botToken, callbackQuery.id, '❌ No autorizado');
       return;
     }
-    // Get the stored token
-    const { data: tokenRow } = await supabase
-      .from('bot_config')
-      .select('value')
-      .eq('key', 'admin_token')
-      .single();
-    
-    const token = tokenRow?.value;
-    // Use the published/preview URL
-    const adminUrl = `https://id-preview--6cecd0e5-892d-48ed-8a9b-98d61ac2a96d.lovable.app/admin?token=${token}`;
-    
     await answerCallbackQuery(botToken, callbackQuery.id);
+    await sendAdminMenu(botToken, chatId);
+    return;
+  }
+
+  if (callbackData === 'admin_stats') {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    const { count: userCount } = await supabase.from('telegram_user_state').select('*', { count: 'exact', head: true });
+    const { data: configs } = await supabase.from('telegram_user_config').select('successful_deals');
+    const totalDeals = (configs || []).reduce((sum: number, c: any) => sum + (c.successful_deals || 0), 0);
     await sendMessage(botToken, chatId,
-      `⚙️ <b>Panel de Administrador</b>\n\nHaz clic en el botón para acceder:`,
+      `📊 <b>Estadísticas</b>\n\n👥 Usuarios: <b>${userCount || 0}</b>\n✅ Negocios exitosos: <b>${totalDeals}</b>`,
+      { reply_markup: { inline_keyboard: [[{ text: '🔙 Volver', callback_data: 'admin_panel' }]] } }
+    );
+    return;
+  }
+
+  if (callbackData === 'admin_rates') {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    const { data: configRows } = await supabase.from('bot_config').select('*');
+    const cfg2: Record<string, any> = {};
+    (configRows || []).forEach((r: any) => { cfg2[r.key] = r.value; });
+    await sendMessage(botToken, chatId,
+      `💰 <b>Tasas de Cambio</b>\n\n` +
+      `🪙 Compra USDT: <b>${cfg2.buy_rate || 'N/A'} CUP</b>\n` +
+      `💵 Venta USDT: <b>${cfg2.sell_rate || 'N/A'} CUP</b>`,
       {
         reply_markup: {
           inline_keyboard: [
-            [{ text: '🔗 Abrir Panel Admin', url: adminUrl }],
+            [{ text: '✏️ Editar Compra', callback_data: 'admin_set_buy' }, { text: '✏️ Editar Venta', callback_data: 'admin_set_sell' }],
+            [{ text: '🔙 Volver', callback_data: 'admin_panel' }],
           ],
         },
       }
     );
+    return;
+  }
+
+  if (callbackData === 'admin_set_buy') {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'admin_edit_buy_rate');
+    await sendMessage(botToken, chatId, '✏️ Envía el nuevo precio de <b>compra USDT</b> (CUP por 1 USDT):',
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'admin_panel' }]] } });
+    return;
+  }
+
+  if (callbackData === 'admin_set_sell') {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'admin_edit_sell_rate');
+    await sendMessage(botToken, chatId, '✏️ Envía el nuevo precio de <b>venta USDT</b> (CUP por 1 USDT):',
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'admin_panel' }]] } });
+    return;
+  }
+
+  // --- Admin SM packages ---
+  if (callbackData === 'admin_sm') {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    const { data: cfgRows } = await supabase.from('bot_config').select('*').eq('key', 'sm_packages').single();
+    const smPkgs = cfgRows?.value || [];
+    const list = smPkgs.map((p: any, i: number) => `${i + 1}. <b>${p.sm} SM</b> = <b>${p.cup} CUP</b>`).join('\n');
+    await sendMessage(botToken, chatId,
+      `📱 <b>Paquetes de Saldo Móvil</b>\n\n${list || 'No hay paquetes'}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            ...smPkgs.map((p: any, i: number) => [{ text: `✏️ ${p.sm} SM (${p.cup} CUP)`, callback_data: `admin_sm_edit_${i}` }]),
+            [{ text: '🔙 Volver', callback_data: 'admin_panel' }],
+          ],
+        },
+      }
+    );
+    return;
+  }
+
+  if (callbackData?.startsWith('admin_sm_edit_')) {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    const idx = callbackData.replace('admin_sm_edit_', '');
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, `admin_edit_sm_cup:${idx}`);
+    await sendMessage(botToken, chatId, `✏️ Envía el nuevo precio en <b>CUP</b> para este paquete SM:`,
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'admin_sm' }]] } });
+    return;
+  }
+
+  // --- Admin services ---
+  if (callbackData === 'admin_services') {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    const { data: svcs } = await supabase.from('bot_services').select('*').eq('active', true).order('sort_order');
+    const allSvcs = svcs || [];
+    const regularSvcs = allSvcs.filter((s: any) => s.category === 'service');
+    const tgpSvcs = allSvcs.filter((s: any) => s.category === 'telegram_premium');
+
+    let text2 = `📦 <b>Servicios</b>\n\n`;
+    regularSvcs.forEach((s: any) => { text2 += `${s.emoji} ${s.name}: <b>${s.cup} CUP</b>\n`; });
+    if (tgpSvcs.length) {
+      text2 += `\n✨ <b>Telegram Premium:</b>\n`;
+      tgpSvcs.forEach((s: any) => { text2 += `   • ${s.name}: <b>${s.cup} CUP</b>\n`; });
+    }
+
+    const buttons = allSvcs.map((s: any) => [
+      { text: `✏️ ${s.emoji} ${s.name}`, callback_data: `admin_svc_edit_${s.id}` },
+      { text: `🗑️`, callback_data: `admin_svc_del_${s.id}` },
+    ]);
+
+    await sendMessage(botToken, chatId, text2, {
+      reply_markup: {
+        inline_keyboard: [
+          ...buttons,
+          [{ text: '➕ Agregar Servicio', callback_data: 'admin_svc_add' }],
+          [{ text: '🔙 Volver', callback_data: 'admin_panel' }],
+        ],
+      },
+    });
+    return;
+  }
+
+  if (callbackData?.startsWith('admin_svc_edit_')) {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    const svcId = callbackData.replace('admin_svc_edit_', '');
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, `admin_edit_svc_cup:${svcId}`);
+    await sendMessage(botToken, chatId, `✏️ Envía el nuevo precio en <b>CUP</b> para este servicio:`,
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'admin_services' }]] } });
+    return;
+  }
+
+  if (callbackData?.startsWith('admin_svc_del_')) {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    const svcId = callbackData.replace('admin_svc_del_', '');
+    await answerCallbackQuery(botToken, callbackQuery.id, '🗑️ Eliminado');
+    await supabase.from('bot_services').update({ active: false, updated_at: new Date().toISOString() }).eq('id', svcId);
+    await sendMessage(botToken, chatId, '✅ Servicio eliminado.',
+      { reply_markup: { inline_keyboard: [[{ text: '🔙 Volver a Servicios', callback_data: 'admin_services' }]] } });
+    return;
+  }
+
+  if (callbackData === 'admin_svc_add') {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'admin_add_svc_id');
+    // Clear temp data
+    await supabase.from('bot_config').upsert({ key: `admin_temp_${chatId}`, value: {}, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    await sendMessage(botToken, chatId, '➕ <b>Agregar Servicio</b>\n\nEnvía el <b>ID</b> del servicio (ej: vpn, iptv):',
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'admin_services' }]] } });
+    return;
+  }
+
+  if (callbackData === 'admin_svc_add_cat_service' || callbackData === 'admin_svc_add_cat_tgp') {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    const category = callbackData === 'admin_svc_add_cat_tgp' ? 'telegram_premium' : 'service';
+    // Get temp data
+    const { data: tempRow } = await supabase.from('bot_config').select('value').eq('key', `admin_temp_${chatId}`).single();
+    const temp = tempRow?.value || {};
+    // Save to DB
+    await supabase.from('bot_services').insert({
+      id: temp.id,
+      name: temp.name,
+      cup: parseInt(temp.cup),
+      emoji: temp.emoji || '📦',
+      category,
+      duration_months: category === 'telegram_premium' ? (parseInt(temp.duration) || null) : null,
+      sort_order: 0,
+    });
+    // Cleanup temp
+    await supabase.from('bot_config').delete().eq('key', `admin_temp_${chatId}`);
+    await upsertUserState(supabase, chatId, username, firstName, 'menu');
+    await sendMessage(botToken, chatId, `✅ Servicio <b>${temp.name}</b> agregado correctamente.`,
+      { reply_markup: { inline_keyboard: [[{ text: '🔙 Volver a Servicios', callback_data: 'admin_services' }]] } });
     return;
   }
 
