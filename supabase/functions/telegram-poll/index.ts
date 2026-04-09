@@ -957,3 +957,140 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
 
   await answerCallbackQuery(botToken, callbackQuery.id);
 }
+
+// --- Admin helpers ---
+
+async function sendAdminMenu(botToken: string, chatId: number) {
+  await sendMessage(botToken, chatId,
+    `⚙️ <b>Panel de Administrador</b>\n\nSelecciona una opción:`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📊 Estadísticas', callback_data: 'admin_stats' }],
+          [{ text: '💰 Tasas de Cambio', callback_data: 'admin_rates' }],
+          [{ text: '📱 Paquetes SM', callback_data: 'admin_sm' }],
+          [{ text: '📦 Servicios', callback_data: 'admin_services' }],
+        ],
+      },
+    }
+  );
+}
+
+async function handleAdminTextInput(botToken: string, supabase: any, chatId: number, username: string | undefined, firstName: string | undefined, step: string, text: string) {
+  if (step === 'admin_edit_buy_rate') {
+    const val = parseInt(text.trim());
+    if (isNaN(val)) {
+      await sendMessage(botToken, chatId, '❌ Envía un número válido.');
+      return;
+    }
+    await supabase.from('bot_config').upsert({ key: 'buy_rate', value: val, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    await upsertUserState(supabase, chatId, username, firstName, 'menu');
+    await sendMessage(botToken, chatId, `✅ Tasa de compra actualizada a <b>${val} CUP</b>.`,
+      { reply_markup: { inline_keyboard: [[{ text: '🔙 Volver', callback_data: 'admin_rates' }]] } });
+    return;
+  }
+
+  if (step === 'admin_edit_sell_rate') {
+    const val = parseInt(text.trim());
+    if (isNaN(val)) {
+      await sendMessage(botToken, chatId, '❌ Envía un número válido.');
+      return;
+    }
+    await supabase.from('bot_config').upsert({ key: 'sell_rate', value: val, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    await upsertUserState(supabase, chatId, username, firstName, 'menu');
+    await sendMessage(botToken, chatId, `✅ Tasa de venta actualizada a <b>${val} CUP</b>.`,
+      { reply_markup: { inline_keyboard: [[{ text: '🔙 Volver', callback_data: 'admin_rates' }]] } });
+    return;
+  }
+
+  if (step?.startsWith('admin_edit_sm_cup:')) {
+    const idx = parseInt(step.split(':')[1]);
+    const val = parseInt(text.trim());
+    if (isNaN(val)) {
+      await sendMessage(botToken, chatId, '❌ Envía un número válido.');
+      return;
+    }
+    const { data: smRow } = await supabase.from('bot_config').select('value').eq('key', 'sm_packages').single();
+    const pkgs = smRow?.value || [];
+    if (idx >= 0 && idx < pkgs.length) {
+      pkgs[idx].cup = val;
+      await supabase.from('bot_config').upsert({ key: 'sm_packages', value: pkgs, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    }
+    await upsertUserState(supabase, chatId, username, firstName, 'menu');
+    await sendMessage(botToken, chatId, `✅ Precio SM actualizado a <b>${val} CUP</b>.`,
+      { reply_markup: { inline_keyboard: [[{ text: '🔙 Volver', callback_data: 'admin_sm' }]] } });
+    return;
+  }
+
+  if (step?.startsWith('admin_edit_svc_cup:')) {
+    const svcId = step.split(':')[1];
+    const val = parseInt(text.trim());
+    if (isNaN(val)) {
+      await sendMessage(botToken, chatId, '❌ Envía un número válido.');
+      return;
+    }
+    await supabase.from('bot_services').update({ cup: val, updated_at: new Date().toISOString() }).eq('id', svcId);
+    await upsertUserState(supabase, chatId, username, firstName, 'menu');
+    await sendMessage(botToken, chatId, `✅ Precio del servicio actualizado a <b>${val} CUP</b>.`,
+      { reply_markup: { inline_keyboard: [[{ text: '🔙 Volver', callback_data: 'admin_services' }]] } });
+    return;
+  }
+
+  // --- Add service multi-step ---
+  if (step === 'admin_add_svc_id') {
+    const id = text.trim().toLowerCase().replace(/\s+/g, '_');
+    await supabase.from('bot_config').upsert({ key: `admin_temp_${chatId}`, value: { id }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    await upsertUserState(supabase, chatId, username, firstName, 'admin_add_svc_name');
+    await sendMessage(botToken, chatId, '📝 Ahora envía el <b>nombre</b> del servicio:',
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'admin_services' }]] } });
+    return;
+  }
+
+  if (step === 'admin_add_svc_name') {
+    const { data: tempRow } = await supabase.from('bot_config').select('value').eq('key', `admin_temp_${chatId}`).single();
+    const temp = tempRow?.value || {};
+    temp.name = text.trim();
+    await supabase.from('bot_config').upsert({ key: `admin_temp_${chatId}`, value: temp, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    await upsertUserState(supabase, chatId, username, firstName, 'admin_add_svc_cup');
+    await sendMessage(botToken, chatId, '💰 Envía el <b>precio en CUP</b>:',
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'admin_services' }]] } });
+    return;
+  }
+
+  if (step === 'admin_add_svc_cup') {
+    const val = parseInt(text.trim());
+    if (isNaN(val)) {
+      await sendMessage(botToken, chatId, '❌ Envía un número válido.');
+      return;
+    }
+    const { data: tempRow } = await supabase.from('bot_config').select('value').eq('key', `admin_temp_${chatId}`).single();
+    const temp = tempRow?.value || {};
+    temp.cup = val;
+    await supabase.from('bot_config').upsert({ key: `admin_temp_${chatId}`, value: temp, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    await upsertUserState(supabase, chatId, username, firstName, 'admin_add_svc_emoji');
+    await sendMessage(botToken, chatId, '🎨 Envía un <b>emoji</b> para el servicio (o envía 📦 para usar el predeterminado):',
+      { reply_markup: { inline_keyboard: [[{ text: '📦 Usar predeterminado', callback_data: 'admin_svc_add_default_emoji' }], [{ text: '❌ Cancelar', callback_data: 'admin_services' }]] } });
+    return;
+  }
+
+  if (step === 'admin_add_svc_emoji') {
+    const { data: tempRow } = await supabase.from('bot_config').select('value').eq('key', `admin_temp_${chatId}`).single();
+    const temp = tempRow?.value || {};
+    temp.emoji = text.trim() || '📦';
+    await supabase.from('bot_config').upsert({ key: `admin_temp_${chatId}`, value: temp, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    await upsertUserState(supabase, chatId, username, firstName, 'menu');
+    await sendMessage(botToken, chatId,
+      `📦 <b>Nuevo servicio:</b>\n\n${temp.emoji} ${temp.name}: <b>${temp.cup} CUP</b>\n\nSelecciona la categoría:`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⚡ Servicio', callback_data: 'admin_svc_add_cat_service' }],
+            [{ text: '✨ Telegram Premium', callback_data: 'admin_svc_add_cat_tgp' }],
+            [{ text: '❌ Cancelar', callback_data: 'admin_services' }],
+          ],
+        },
+      }
+    );
+    return;
+  }
+}
