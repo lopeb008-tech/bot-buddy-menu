@@ -417,42 +417,18 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
       const deals = config?.successful_deals ?? 0;
 
       const isAdmin = ADMIN_IDS.includes(chatId);
+      const inlineKeyboard = isAdmin
+        ? [[{ text: '⚙️ Panel de Administrador', callback_data: 'admin_panel' }]]
+        : [];
 
-      if (isAdmin) {
-        // Generate admin token
-        const token = crypto.randomUUID();
-        await supabase.from('bot_config').upsert({
-          key: 'admin_token',
-          value: token,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'key' });
-
-        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-        const projectRef = supabaseUrl.replace('https://', '').replace('.supabase.co', '');
-
-        await sendMessage(botToken, chatId,
-          `👤 <b>Mi Cuenta</b>\n\n` +
-          `💳 <b>Tarjeta CUP:</b> ${cup}\n` +
-          `📱 <b>Número a confirmar:</b> ${confirm}\n` +
-          `🪙 <b>Monedero Mi Transfer:</b> ${transfer}\n\n` +
-          `✅ <b>Negocios exitosos:</b> ${deals}`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '⚙️ Panel de Administrador', callback_data: 'open_admin_panel' }],
-              ],
-            },
-          }
-        );
-      } else {
-        await sendMessage(botToken, chatId,
-          `👤 <b>Mi Cuenta</b>\n\n` +
-          `💳 <b>Tarjeta CUP:</b> ${cup}\n` +
-          `📱 <b>Número a confirmar:</b> ${confirm}\n` +
-          `🪙 <b>Monedero Mi Transfer:</b> ${transfer}\n\n` +
-          `✅ <b>Negocios exitosos:</b> ${deals}`
-        );
-      }
+      await sendMessage(botToken, chatId,
+        `👤 <b>Mi Cuenta</b>\n\n` +
+        `💳 <b>Tarjeta CUP:</b> ${cup}\n` +
+        `📱 <b>Número a confirmar:</b> ${confirm}\n` +
+        `🪙 <b>Monedero Mi Transfer:</b> ${transfer}\n\n` +
+        `✅ <b>Negocios exitosos:</b> ${deals}`,
+        isAdmin ? { reply_markup: { inline_keyboard: inlineKeyboard } } : {}
+      );
       return;
     }
 
