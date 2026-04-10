@@ -822,6 +822,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     const smAmount = parseInt(callbackData.replace('sm_pay_card_', ''));
     const pkg = SM_PACKAGES.find((p: any) => p.sm === smAmount);
     await answerCallbackQuery(botToken, callbackQuery.id);
+    await supabase.from('bot_config').upsert({ key: `purchase_${chatId}`, value: { description: `Venta de SM: ${pkg?.sm} SM (${pkg?.cup} CUP)`, contactMessage: `Buenas, he comprado ${pkg?.sm} SM` }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
     await upsertUserState(supabase, chatId, username, firstName, 'sm_waiting_screenshot');
     await sendMessage(botToken, chatId,
       `💳 <b>Pago por Tarjeta CUP</b>\n\n` +
@@ -840,6 +841,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     const smAmount = parseInt(callbackData.replace('sm_pay_transfer_', ''));
     const pkg = SM_PACKAGES.find((p: any) => p.sm === smAmount);
     await answerCallbackQuery(botToken, callbackQuery.id);
+    await supabase.from('bot_config').upsert({ key: `purchase_${chatId}`, value: { description: `Venta de SM: ${pkg?.sm} SM (${pkg?.cup} CUP)`, contactMessage: `Buenas, he comprado ${pkg?.sm} SM` }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
     await upsertUserState(supabase, chatId, username, firstName, 'sm_waiting_screenshot');
     await sendMessage(botToken, chatId,
       `📲 <b>Pago por Bolsa Mi Transfer</b>\n\n` +
@@ -944,6 +946,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     const svcId = callbackData.replace('svc_pay_card_', '');
     const svc = SERVICES.find((s: any) => s.id === svcId);
     await answerCallbackQuery(botToken, callbackQuery.id);
+    await supabase.from('bot_config').upsert({ key: `purchase_${chatId}`, value: { description: `Servicio: ${svc?.name} (${svc?.cup} CUP)`, contactMessage: `Buenas, he comprado el servicio ${svc?.name}` }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
     await upsertUserState(supabase, chatId, username, firstName, 'svc_waiting_screenshot');
     await sendMessage(botToken, chatId,
       `💳 <b>Pago por Tarjeta CUP</b>\n\n` +
@@ -962,6 +965,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     const svcId = callbackData.replace('svc_pay_transfer_', '');
     const svc = SERVICES.find((s: any) => s.id === svcId);
     await answerCallbackQuery(botToken, callbackQuery.id);
+    await supabase.from('bot_config').upsert({ key: `purchase_${chatId}`, value: { description: `Servicio: ${svc?.name} (${svc?.cup} CUP)`, contactMessage: `Buenas, he comprado el servicio ${svc?.name}` }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
     await upsertUserState(supabase, chatId, username, firstName, 'svc_waiting_screenshot');
     await sendMessage(botToken, chatId,
       `📲 <b>Pago por Bolsa Mi Transfer</b>\n\n` +
@@ -979,6 +983,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     const tgpId = callbackData.replace('svc_tgp_pay_card_', '');
     const pkg = TELEGRAM_PREMIUM.find((t: any) => t.id === tgpId);
     await answerCallbackQuery(botToken, callbackQuery.id);
+    await supabase.from('bot_config').upsert({ key: `purchase_${chatId}`, value: { description: `Telegram Premium: ${pkg?.name} (${pkg?.cup} CUP)`, contactMessage: `Buenas, he comprado Telegram Premium ${pkg?.name}` }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
     await upsertUserState(supabase, chatId, username, firstName, 'svc_waiting_screenshot');
     await sendMessage(botToken, chatId,
       `💳 <b>Pago por Tarjeta CUP</b>\n\n` +
@@ -997,6 +1002,7 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     const tgpId = callbackData.replace('svc_tgp_pay_transfer_', '');
     const pkg = TELEGRAM_PREMIUM.find((t: any) => t.id === tgpId);
     await answerCallbackQuery(botToken, callbackQuery.id);
+    await supabase.from('bot_config').upsert({ key: `purchase_${chatId}`, value: { description: `Telegram Premium: ${pkg?.name} (${pkg?.cup} CUP)`, contactMessage: `Buenas, he comprado Telegram Premium ${pkg?.name}` }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
     await upsertUserState(supabase, chatId, username, firstName, 'svc_waiting_screenshot');
     await sendMessage(botToken, chatId,
       `📲 <b>Pago por Bolsa Mi Transfer</b>\n\n` +
