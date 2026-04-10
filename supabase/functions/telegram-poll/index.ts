@@ -214,7 +214,7 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
   const firstName = message.from?.first_name;
 
   const { ADMIN_CUP_CARD, ADMIN_CONFIRM_NUMBER, ADMIN_MI_TRANSFER, ADMIN_USDT_WALLET,
-    BUY_RATE, SELL_RATE, SM_PACKAGES, SERVICES, TELEGRAM_PREMIUM } = cfg;
+    BUY_RATE, SELL_RATE, SM_PACKAGES, SERVICES, TELEGRAM_PREMIUM, SM_BUY_RATE } = cfg;
 
   if (text === '/start') {
     await upsertUserState(supabase, chatId, username, firstName, 'awaiting_join');
