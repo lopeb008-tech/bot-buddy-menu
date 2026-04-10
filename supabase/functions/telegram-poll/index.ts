@@ -368,6 +368,7 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
   if (step === 'venta_amount') {
     const usdtAmount = parseFloat(text.trim() || '0');
     const cupAmount = usdtAmount * SELL_RATE;
+    await supabase.from('bot_config').upsert({ key: `purchase_${chatId}`, value: { description: `Venta de ${usdtAmount} USDT (${cupAmount} CUP)`, contactMessage: `Buenas, he vendido ${usdtAmount} USDT` }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
     await upsertUserState(supabase, chatId, username, firstName, 'venta_payment_method');
     await sendMessage(botToken, chatId,
       `💰 <b>Venta de Moneda</b>\n\n` +
@@ -454,7 +455,17 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
     }
 
     if (text === '🎧 Soporte') {
-      await sendMessage(botToken, chatId, '🎧 <b>Soporte Técnico</b>\n\nDescribe tu problema y te ayudaremos lo antes posible. (Próximamente)');
+      await sendMessage(botToken, chatId,
+        '🎧 <b>Soporte Técnico</b>\n\nContacta con nuestro equipo de soporte:',
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📩 Contactar por Telegram', url: 'https://t.me/Vbussines26' }],
+              [{ text: '📱 Contactar por WhatsApp', url: 'https://wa.me/5358613666' }],
+            ],
+          },
+        }
+      );
       return;
     }
 
@@ -554,6 +565,14 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     await answerCallbackQuery(botToken, callbackQuery.id, '🚫 Cancelado');
     await upsertUserState(supabase, chatId, username, firstName, 'tienda_menu');
     await sendTiendaMenu(botToken, chatId, '🚫 <b>Solicitud cancelada.</b>\n\nSelecciona una opción:');
+    return;
+  }
+
+  // --- Back to tienda after screenshot ---
+  if (callbackData === 'back_to_tienda') {
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'tienda_menu');
+    await sendTiendaMenu(botToken, chatId, '🛍️ <b>Tienda</b>\n\nSelecciona una opción:');
     return;
   }
 
