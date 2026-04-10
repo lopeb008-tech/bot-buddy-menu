@@ -260,18 +260,37 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
 
   // --- Photo handler for screenshot steps ---
   if (message.photo && (step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'venta_waiting_screenshot' || step === 'svc_waiting_screenshot')) {
-    // Forward to admin
+    // Get purchase info
+    const { data: purchaseRow } = await supabase.from('bot_config').select('value').eq('key', `purchase_${chatId}`).single();
+    const purchaseInfo = purchaseRow?.value || {};
+    const purchaseDesc = purchaseInfo.description || step;
+
     const userLabel = username ? `@${username}` : firstName || `Chat ${chatId}`;
     await forwardPhotoToAdmin(botToken, chatId, message.message_id,
-      `📸 <b>Nueva captura de pago</b>\n\nDe: ${userLabel}\nPaso: ${step}\nChat ID: ${chatId}`
+      `📸 <b>Nueva captura de pago</b>\n\nDe: ${userLabel}\n📦 <b>Operación:</b> ${purchaseDesc}\nChat ID: ${chatId}`
     );
 
+    // Build contact message based on purchase
+    const contactMsg = purchaseInfo.contactMessage || `Buenas, he realizado una compra`;
+    const encodedMsg = encodeURIComponent(contactMsg);
+
     await upsertUserState(supabase, chatId, username, firstName, 'tienda_menu');
-    await sendTiendaMenu(botToken, chatId,
+    await sendMessage(botToken, chatId,
       '✅ <b>¡Captura recibida!</b>\n\n' +
-      'Tu solicitud ha sido enviada al administrador para verificación. Te notificaremos cuando sea procesada.\n\n' +
-      'Selecciona una opción:'
+      'Si ha realizado el pago, por favor contacta con el administrador:',
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📩 Contactar por Telegram', url: `https://t.me/Vbussines26?text=${encodedMsg}` }],
+            [{ text: '📱 Contactar por WhatsApp', url: `https://wa.me/5358613666?text=${encodedMsg}` }],
+            [{ text: '🏠 Volver al menú', callback_data: 'back_to_tienda' }],
+          ],
+        },
+      }
     );
+
+    // Cleanup purchase info
+    await supabase.from('bot_config').delete().eq('key', `purchase_${chatId}`);
     return;
   }
 
