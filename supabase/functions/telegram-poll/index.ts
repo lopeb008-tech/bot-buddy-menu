@@ -12,12 +12,14 @@ const CANCELLABLE_STEPS = [
   'compra_amount', 'compra_waiting_screenshot',
   'venta_amount', 'venta_payment_method', 'venta_waiting_screenshot',
   'sm_waiting_screenshot', 'svc_waiting_screenshot',
+  'compra_sm_amount', 'compra_sm_waiting_screenshot',
 ];
 
 // Admin steps
 const ADMIN_STEPS = [
   'admin_edit_buy_rate', 'admin_edit_sell_rate',
   'admin_add_svc_id', 'admin_add_svc_name', 'admin_add_svc_cup', 'admin_add_svc_emoji',
+  'admin_broadcast_msg',
 ];
 
 const ADMIN_CHAT_ID = 5127721601;
