@@ -12,12 +12,14 @@ const CANCELLABLE_STEPS = [
   'compra_amount', 'compra_waiting_screenshot',
   'venta_amount', 'venta_payment_method', 'venta_waiting_screenshot',
   'sm_waiting_screenshot', 'svc_waiting_screenshot',
+  'compra_sm_amount', 'compra_sm_waiting_screenshot',
 ];
 
 // Admin steps
 const ADMIN_STEPS = [
   'admin_edit_buy_rate', 'admin_edit_sell_rate',
   'admin_add_svc_id', 'admin_add_svc_name', 'admin_add_svc_cup', 'admin_add_svc_emoji',
+  'admin_broadcast_msg',
 ];
 
 const ADMIN_CHAT_ID = 5127721601;
@@ -106,6 +108,7 @@ Deno.serve(async () => {
           await handleMessage(BOT_TOKEN, supabase, update.message, {
             ADMIN_CUP_CARD, ADMIN_CONFIRM_NUMBER, ADMIN_MI_TRANSFER, ADMIN_USDT_WALLET,
             BUY_RATE, SELL_RATE, SM_PACKAGES, SERVICES, TELEGRAM_PREMIUM,
+            SM_BUY_RATE: botConfig.sm_buy_rate || 2.5,
           });
         } else if (update.callback_query) {
           await handleCallbackQuery(BOT_TOKEN, supabase, update.callback_query, {
@@ -193,6 +196,7 @@ async function sendTiendaMenu(botToken: string, chatId: number, text: string) {
       keyboard: [
         [{ text: '📦 Servicios' }, { text: '💵 Venta de SM' }],
         [{ text: '💰 Venta de moneda' }, { text: '🪙 Compra de moneda' }],
+        [{ text: '📲 Compra de SM' }],
         [{ text: '🔙 Volver' }],
       ],
       resize_keyboard: true,
@@ -210,7 +214,7 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
   const firstName = message.from?.first_name;
 
   const { ADMIN_CUP_CARD, ADMIN_CONFIRM_NUMBER, ADMIN_MI_TRANSFER, ADMIN_USDT_WALLET,
-    BUY_RATE, SELL_RATE, SM_PACKAGES, SERVICES, TELEGRAM_PREMIUM } = cfg;
+    BUY_RATE, SELL_RATE, SM_PACKAGES, SERVICES, TELEGRAM_PREMIUM, SM_BUY_RATE } = cfg;
 
   if (text === '/start') {
     await upsertUserState(supabase, chatId, username, firstName, 'awaiting_join');
@@ -249,7 +253,7 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
   }
 
   // --- Admin text input handlers ---
-  if (step?.startsWith('admin_edit_') || step?.startsWith('admin_add_svc_')) {
+  if (step?.startsWith('admin_edit_') || step?.startsWith('admin_add_svc_') || step === 'admin_broadcast_msg') {
     if (!ADMIN_IDS.includes(chatId)) {
       await upsertUserState(supabase, chatId, username, firstName, 'menu');
       return;
@@ -259,7 +263,7 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
   }
 
   // --- Photo handler for screenshot steps ---
-  if (message.photo && (step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'venta_waiting_screenshot' || step === 'svc_waiting_screenshot')) {
+  if (message.photo && (step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'venta_waiting_screenshot' || step === 'svc_waiting_screenshot' || step === 'compra_sm_waiting_screenshot')) {
     // Get purchase info
     const { data: purchaseRow } = await supabase.from('bot_config').select('value').eq('key', `purchase_${chatId}`).single();
     const purchaseInfo = purchaseRow?.value || {};
@@ -389,8 +393,33 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
     return;
   }
 
+  // --- Compra de SM: user sends amount ---
+  if (step === 'compra_sm_amount') {
+    const amount = parseInt(text.trim() || '0');
+    if (isNaN(amount) || amount <= 0) {
+      await sendMessage(botToken, chatId, '❌ Envía una cantidad válida de saldo móvil.',
+        { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } });
+      return;
+    }
+    const smRate = SM_BUY_RATE;
+    const cupAmount = Math.round(amount / smRate);
+    await supabase.from('bot_config').upsert({ key: `purchase_${chatId}`, value: { description: `Compra de SM: ${amount} SM`, contactMessage: `Buenas tardes, he transferido ${amount} de saldo móvil` }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    await upsertUserState(supabase, chatId, username, firstName, 'compra_sm_waiting_screenshot');
+    await sendMessage(botToken, chatId,
+      `📲 <b>Compra de Saldo Móvil</b>\n\n` +
+      `Cantidad: <b>${amount} SM</b>\n` +
+      `Recibirás: <b>${cupAmount} CUP</b>\n` +
+      `(Tasa: ${smRate} SM = 1 CUP)\n\n` +
+      `📱 Transfiere el saldo al número:\n` +
+      `<code>58613666</code>\n\n` +
+      `📸 Después de transferir, envía una <b>captura de pantalla</b> de la transferencia.`,
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
+    );
+    return;
+  }
+
   // --- Waiting for screenshots (non-photo messages) ---
-  if (step === 'venta_waiting_screenshot' || step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'svc_waiting_screenshot') {
+  if (step === 'venta_waiting_screenshot' || step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'svc_waiting_screenshot' || step === 'compra_sm_waiting_screenshot') {
     if (!message.photo) {
       await sendMessage(botToken, chatId,
         '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.',
@@ -534,6 +563,17 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
         { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
       );
       await upsertUserState(supabase, chatId, username, firstName, 'compra_amount');
+      return;
+    }
+
+    if (text === '📲 Compra de SM') {
+      await sendMessage(botToken, chatId,
+        `📲 <b>Compra de Saldo Móvil</b>\n\n` +
+        `El administrador compra saldo móvil a <b>2.5</b> (2.5 SM = 1 CUP)\n\n` +
+        `📝 Envía la <b>cantidad de saldo</b> que vas a vender:`,
+        { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
+      );
+      await upsertUserState(supabase, chatId, username, firstName, 'compra_sm_amount');
       return;
     }
 
@@ -1015,6 +1055,16 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     return;
   }
 
+  // --- Admin broadcast ---
+  if (callbackData === 'admin_broadcast') {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'admin_broadcast_msg');
+    await sendMessage(botToken, chatId, '📢 <b>Enviar Mensaje a Todos</b>\n\nEscribe el mensaje que quieres enviar a todos los usuarios:',
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'admin_panel' }]] } });
+    return;
+  }
+
   // --- Pago realizado (generic) ---
   if (callbackData === 'payment_done') {
     await answerCallbackQuery(botToken, callbackQuery.id, '📸 Envía la captura');
@@ -1037,6 +1087,7 @@ async function sendAdminMenu(botToken: string, chatId: number) {
           [{ text: '💰 Tasas de Cambio', callback_data: 'admin_rates' }],
           [{ text: '📱 Paquetes SM', callback_data: 'admin_sm' }],
           [{ text: '📦 Servicios', callback_data: 'admin_services' }],
+          [{ text: '📢 Enviar Mensaje a Todos', callback_data: 'admin_broadcast' }],
         ],
       },
     }
@@ -1157,6 +1208,34 @@ async function handleAdminTextInput(botToken: string, supabase: any, chatId: num
           ],
         },
       }
+    );
+    return;
+  }
+
+  // --- Admin broadcast message ---
+  if (step === 'admin_broadcast_msg') {
+    const msg = text.trim();
+    if (!msg) {
+      await sendMessage(botToken, chatId, '❌ El mensaje no puede estar vacío.');
+      return;
+    }
+    // Get all user chat_ids
+    const { data: allUsers } = await supabase.from('telegram_user_state').select('chat_id');
+    const users = allUsers || [];
+    let sent = 0;
+    let failed = 0;
+    for (const user of users) {
+      try {
+        await sendMessage(botToken, user.chat_id, `📢 <b>Mensaje del Administrador:</b>\n\n${msg}`);
+        sent++;
+      } catch {
+        failed++;
+      }
+    }
+    await upsertUserState(supabase, chatId, username, firstName, 'menu');
+    await sendMessage(botToken, chatId,
+      `✅ <b>Mensaje enviado</b>\n\n📤 Enviados: <b>${sent}</b>\n❌ Fallidos: <b>${failed}</b>`,
+      { reply_markup: { inline_keyboard: [[{ text: '🔙 Volver', callback_data: 'admin_panel' }]] } }
     );
     return;
   }
