@@ -252,7 +252,7 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
   }
 
   // --- Admin text input handlers ---
-  if (step?.startsWith('admin_edit_') || step?.startsWith('admin_add_svc_')) {
+  if (step?.startsWith('admin_edit_') || step?.startsWith('admin_add_svc_') || step === 'admin_broadcast_msg') {
     if (!ADMIN_IDS.includes(chatId)) {
       await upsertUserState(supabase, chatId, username, firstName, 'menu');
       return;
