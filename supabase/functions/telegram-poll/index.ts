@@ -1076,6 +1076,7 @@ async function sendAdminMenu(botToken: string, chatId: number) {
           [{ text: '💰 Tasas de Cambio', callback_data: 'admin_rates' }],
           [{ text: '📱 Paquetes SM', callback_data: 'admin_sm' }],
           [{ text: '📦 Servicios', callback_data: 'admin_services' }],
+          [{ text: '📢 Enviar Mensaje a Todos', callback_data: 'admin_broadcast' }],
         ],
       },
     }
