@@ -565,6 +565,17 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
       return;
     }
 
+    if (text === '📲 Compra de SM') {
+      await sendMessage(botToken, chatId,
+        `📲 <b>Compra de Saldo Móvil</b>\n\n` +
+        `El administrador compra saldo móvil a <b>2.5</b> (2.5 SM = 1 CUP)\n\n` +
+        `📝 Envía la <b>cantidad de saldo</b> que vas a vender:`,
+        { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
+      );
+      await upsertUserState(supabase, chatId, username, firstName, 'compra_sm_amount');
+      return;
+    }
+
     if (text === '🔙 Volver') {
       await upsertUserState(supabase, chatId, username, firstName, 'menu');
       await sendMainMenu(botToken, chatId, '🏠 <b>Menú Principal</b>\n\nSelecciona una opción:');
