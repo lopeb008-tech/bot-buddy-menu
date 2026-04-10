@@ -343,11 +343,13 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
   // --- Compra de moneda: user sends amount ---
   if (step === 'compra_amount') {
     const amount = text.trim();
+    const cupTotal = parseFloat(amount || '0') * BUY_RATE;
+    await supabase.from('bot_config').upsert({ key: `purchase_${chatId}`, value: { description: `Compra de ${amount} USDT (${cupTotal} CUP)`, contactMessage: `Buenas, he comprado ${amount} USDT` }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
     await upsertUserState(supabase, chatId, username, firstName, 'compra_waiting_screenshot');
     await sendMessage(botToken, chatId,
       `🪙 <b>Compra de Moneda</b>\n\n` +
       `Monto a comprar: <b>${amount} USDT</b>\n` +
-      `Debes pagar: <b>${parseFloat(amount || '0') * BUY_RATE} CUP</b>\n\n` +
+      `Debes pagar: <b>${cupTotal} CUP</b>\n\n` +
       `📤 Envía los USDT a la siguiente wallet:\n` +
       `<code>${ADMIN_USDT_WALLET}</code>\n\n` +
       `📸 Después de enviar, manda una <b>captura de pantalla</b> de la transferencia.`,
