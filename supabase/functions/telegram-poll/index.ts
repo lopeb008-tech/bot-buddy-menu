@@ -1210,4 +1210,32 @@ async function handleAdminTextInput(botToken: string, supabase: any, chatId: num
     );
     return;
   }
+
+  // --- Admin broadcast message ---
+  if (step === 'admin_broadcast_msg') {
+    const msg = text.trim();
+    if (!msg) {
+      await sendMessage(botToken, chatId, '❌ El mensaje no puede estar vacío.');
+      return;
+    }
+    // Get all user chat_ids
+    const { data: allUsers } = await supabase.from('telegram_user_state').select('chat_id');
+    const users = allUsers || [];
+    let sent = 0;
+    let failed = 0;
+    for (const user of users) {
+      try {
+        await sendMessage(botToken, user.chat_id, `📢 <b>Mensaje del Administrador:</b>\n\n${msg}`);
+        sent++;
+      } catch {
+        failed++;
+      }
+    }
+    await upsertUserState(supabase, chatId, username, firstName, 'menu');
+    await sendMessage(botToken, chatId,
+      `✅ <b>Mensaje enviado</b>\n\n📤 Enviados: <b>${sent}</b>\n❌ Fallidos: <b>${failed}</b>`,
+      { reply_markup: { inline_keyboard: [[{ text: '🔙 Volver', callback_data: 'admin_panel' }]] } }
+    );
+    return;
+  }
 }
