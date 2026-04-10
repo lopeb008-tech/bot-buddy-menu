@@ -392,8 +392,33 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
     return;
   }
 
+  // --- Compra de SM: user sends amount ---
+  if (step === 'compra_sm_amount') {
+    const amount = parseInt(text.trim() || '0');
+    if (isNaN(amount) || amount <= 0) {
+      await sendMessage(botToken, chatId, '❌ Envía una cantidad válida de saldo móvil.',
+        { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } });
+      return;
+    }
+    const smRate = botConfig.sm_buy_rate || 2.5;
+    const cupAmount = Math.round(amount / smRate);
+    await supabase.from('bot_config').upsert({ key: `purchase_${chatId}`, value: { description: `Compra de SM: ${amount} SM`, contactMessage: `Buenas tardes, he transferido ${amount} de saldo móvil` }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    await upsertUserState(supabase, chatId, username, firstName, 'compra_sm_waiting_screenshot');
+    await sendMessage(botToken, chatId,
+      `📲 <b>Compra de Saldo Móvil</b>\n\n` +
+      `Cantidad: <b>${amount} SM</b>\n` +
+      `Recibirás: <b>${cupAmount} CUP</b>\n` +
+      `(Tasa: ${smRate} SM = 1 CUP)\n\n` +
+      `📱 Transfiere el saldo al número:\n` +
+      `<code>58613666</code>\n\n` +
+      `📸 Después de transferir, envía una <b>captura de pantalla</b> de la transferencia.`,
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
+    );
+    return;
+  }
+
   // --- Waiting for screenshots (non-photo messages) ---
-  if (step === 'venta_waiting_screenshot' || step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'svc_waiting_screenshot') {
+  if (step === 'venta_waiting_screenshot' || step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'svc_waiting_screenshot' || step === 'compra_sm_waiting_screenshot') {
     if (!message.photo) {
       await sendMessage(botToken, chatId,
         '📸 Por favor envía una <b>captura de pantalla</b> de la transferencia.',
