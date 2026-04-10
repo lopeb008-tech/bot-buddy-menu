@@ -195,6 +195,7 @@ async function sendTiendaMenu(botToken: string, chatId: number, text: string) {
       keyboard: [
         [{ text: '📦 Servicios' }, { text: '💵 Venta de SM' }],
         [{ text: '💰 Venta de moneda' }, { text: '🪙 Compra de moneda' }],
+        [{ text: '📲 Compra de SM' }],
         [{ text: '🔙 Volver' }],
       ],
       resize_keyboard: true,
