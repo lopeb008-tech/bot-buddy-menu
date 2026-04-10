@@ -401,7 +401,7 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
         { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } });
       return;
     }
-    const smRate = botConfig.sm_buy_rate || 2.5;
+    const smRate = SM_BUY_RATE;
     const cupAmount = Math.round(amount / smRate);
     await supabase.from('bot_config').upsert({ key: `purchase_${chatId}`, value: { description: `Compra de SM: ${amount} SM`, contactMessage: `Buenas tardes, he transferido ${amount} de saldo móvil` }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
     await upsertUserState(supabase, chatId, username, firstName, 'compra_sm_waiting_screenshot');
