@@ -108,6 +108,7 @@ Deno.serve(async () => {
           await handleMessage(BOT_TOKEN, supabase, update.message, {
             ADMIN_CUP_CARD, ADMIN_CONFIRM_NUMBER, ADMIN_MI_TRANSFER, ADMIN_USDT_WALLET,
             BUY_RATE, SELL_RATE, SM_PACKAGES, SERVICES, TELEGRAM_PREMIUM,
+            SM_BUY_RATE: botConfig.sm_buy_rate || 2.5,
           });
         } else if (update.callback_query) {
           await handleCallbackQuery(BOT_TOKEN, supabase, update.callback_query, {
