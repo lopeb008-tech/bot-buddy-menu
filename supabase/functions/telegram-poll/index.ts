@@ -262,7 +262,7 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
   }
 
   // --- Photo handler for screenshot steps ---
-  if (message.photo && (step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'venta_waiting_screenshot' || step === 'svc_waiting_screenshot')) {
+  if (message.photo && (step === 'sm_waiting_screenshot' || step === 'compra_waiting_screenshot' || step === 'venta_waiting_screenshot' || step === 'svc_waiting_screenshot' || step === 'compra_sm_waiting_screenshot')) {
     // Get purchase info
     const { data: purchaseRow } = await supabase.from('bot_config').select('value').eq('key', `purchase_${chatId}`).single();
     const purchaseInfo = purchaseRow?.value || {};
