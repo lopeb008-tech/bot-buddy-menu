@@ -1054,6 +1054,16 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     return;
   }
 
+  // --- Admin broadcast ---
+  if (callbackData === 'admin_broadcast') {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'admin_broadcast_msg');
+    await sendMessage(botToken, chatId, '📢 <b>Enviar Mensaje a Todos</b>\n\nEscribe el mensaje que quieres enviar a todos los usuarios:',
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'admin_panel' }]] } });
+    return;
+  }
+
   // --- Pago realizado (generic) ---
   if (callbackData === 'payment_done') {
     await answerCallbackQuery(botToken, callbackQuery.id, '📸 Envía la captura');
