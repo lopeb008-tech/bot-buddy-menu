@@ -37,28 +37,6 @@ Deno.serve(async () => {
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  // Load config from DB
-  const { data: configRows } = await supabase.from('bot_config').select('*');
-  const botConfig: Record<string, any> = {};
-  (configRows || []).forEach((r: any) => { botConfig[r.key] = r.value; });
-
-  const ADMIN_CUP_CARD = botConfig.admin_cup_card || '9204-0699-9692-9675';
-  const ADMIN_CONFIRM_NUMBER = botConfig.admin_confirm_number || '58613666';
-  const ADMIN_MI_TRANSFER = botConfig.admin_mi_transfer || '58613666';
-  const ADMIN_USDT_WALLET = botConfig.admin_usdt_wallet || '0xD64Ea37111d1926C1015091a6D241996946A29B0';
-  const BUY_RATE = botConfig.buy_rate || 600;
-  const SELL_RATE = botConfig.sell_rate || 640;
-  const SM_PACKAGES = botConfig.sm_packages || [
-    { sm: 120, cup: 400 },
-    { sm: 240, cup: 1000 },
-    { sm: 370, cup: 1300 },
-  ];
-
-  // Load services from DB
-  const { data: svcRows } = await supabase.from('bot_services').select('*').eq('active', true).order('sort_order');
-  const SERVICES = (svcRows || []).filter((s: any) => s.category === 'service');
-  const TELEGRAM_PREMIUM = (svcRows || []).filter((s: any) => s.category === 'telegram_premium');
-
   let totalProcessed = 0;
 
   const { data: state, error: stateErr } = await supabase
