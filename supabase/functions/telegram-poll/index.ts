@@ -467,15 +467,7 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
       const deals = config?.successful_deals ?? 0;
 
       // Get bot username for invite link
-      const meRes = await fetch(`${GATEWAY_URL}/getMe`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-          'X-Connection-Api-Key': botToken,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      });
+      const meRes = await fetch(`${TELEGRAM_API}/bot${botToken}/getMe`);
       const meData = await meRes.json();
       const botUsername = meData.result?.username ?? 'bot';
       const inviteLink = `https://t.me/${botUsername}?start=ref_${chatId}`;
