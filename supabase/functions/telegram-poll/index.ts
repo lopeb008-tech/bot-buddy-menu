@@ -466,18 +466,36 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
       const transfer = config?.mi_transfer ?? '❌ No configurado';
       const deals = config?.successful_deals ?? 0;
 
+      // Get bot username for invite link
+      const meRes = await fetch(`${GATEWAY_URL}/getMe`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+          'X-Connection-Api-Key': botToken,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
+      const meData = await meRes.json();
+      const botUsername = meData.result?.username ?? 'bot';
+      const inviteLink = `https://t.me/${botUsername}?start=ref_${chatId}`;
+
       const isAdmin = ADMIN_IDS.includes(chatId);
-      const inlineKeyboard = isAdmin
-        ? [[{ text: '⚙️ Panel de Administrador', callback_data: 'admin_panel' }]]
-        : [];
+      const inlineKeyboard: any[][] = [
+        [{ text: '🔗 Mi enlace de invitación', url: inviteLink }],
+      ];
+      if (isAdmin) {
+        inlineKeyboard.push([{ text: '⚙️ Panel de Administrador', callback_data: 'admin_panel' }]);
+      }
 
       await sendMessage(botToken, chatId,
         `👤 <b>Mi Cuenta</b>\n\n` +
         `💳 <b>Tarjeta CUP:</b> ${cup}\n` +
         `📱 <b>Número a confirmar:</b> ${confirm}\n` +
         `🪙 <b>Monedero Mi Transfer:</b> ${transfer}\n\n` +
-        `✅ <b>Negocios exitosos:</b> ${deals}`,
-        isAdmin ? { reply_markup: { inline_keyboard: inlineKeyboard } } : {}
+        `✅ <b>Negocios exitosos:</b> ${deals}\n\n` +
+        `🔗 <b>Tu enlace de invitación:</b>\n<code>${inviteLink}</code>`,
+        { reply_markup: { inline_keyboard: inlineKeyboard } }
       );
       return;
     }
