@@ -402,14 +402,14 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
       return;
     }
     const smRate = SM_BUY_RATE;
-    const cupAmount = Math.round(amount / smRate);
+    const cupAmount = Math.round(amount * smRate);
     await supabase.from('bot_config').upsert({ key: `purchase_${chatId}`, value: { description: `Compra de SM: ${amount} SM`, contactMessage: `Buenas tardes, he transferido ${amount} de saldo móvil` }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
     await upsertUserState(supabase, chatId, username, firstName, 'compra_sm_waiting_screenshot');
     await sendMessage(botToken, chatId,
       `📲 <b>Compra de Saldo Móvil</b>\n\n` +
       `Cantidad: <b>${amount} SM</b>\n` +
       `Recibirás: <b>${cupAmount} CUP</b>\n` +
-      `(Tasa: ${smRate} SM = 1 CUP)\n\n` +
+      `(Tasa: 1 SM = ${smRate} CUP)\n\n` +
       `📱 Transfiere el saldo al número:\n` +
       `<code>58613666</code>\n\n` +
       `📸 Después de transferir, envía una <b>captura de pantalla</b> de la transferencia.`,
@@ -569,7 +569,7 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
     if (text === '📲 Compra de SM') {
       await sendMessage(botToken, chatId,
         `📲 <b>Compra de Saldo Móvil</b>\n\n` +
-        `El administrador compra saldo móvil a <b>2.5</b> (2.5 SM = 1 CUP)\n\n` +
+        `El administrador compra saldo móvil a <b>${SM_BUY_RATE}</b> (1 SM = ${SM_BUY_RATE} CUP)\n\n` +
         `📝 Envía la <b>cantidad de saldo</b> que vas a vender:`,
         { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
       );
@@ -659,11 +659,13 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     await sendMessage(botToken, chatId,
       `💰 <b>Tasas de Cambio</b>\n\n` +
       `🪙 Compra USDT: <b>${cfg2.buy_rate || 'N/A'} CUP</b>\n` +
-      `💵 Venta USDT: <b>${cfg2.sell_rate || 'N/A'} CUP</b>`,
+      `💵 Venta USDT: <b>${cfg2.sell_rate || 'N/A'} CUP</b>\n` +
+      `📲 Compra SM: <b>${cfg2.sm_buy_rate || 2.5}</b> (1 SM = ${cfg2.sm_buy_rate || 2.5} CUP)`,
       {
         reply_markup: {
           inline_keyboard: [
-            [{ text: '✏️ Editar Compra', callback_data: 'admin_set_buy' }, { text: '✏️ Editar Venta', callback_data: 'admin_set_sell' }],
+            [{ text: '✏️ Editar Compra USDT', callback_data: 'admin_set_buy' }, { text: '✏️ Editar Venta USDT', callback_data: 'admin_set_sell' }],
+            [{ text: '✏️ Editar Compra SM', callback_data: 'admin_set_sm_buy_rate' }],
             [{ text: '🔙 Volver', callback_data: 'admin_panel' }],
           ],
         },
