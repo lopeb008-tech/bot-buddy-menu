@@ -17,7 +17,7 @@ const CANCELLABLE_STEPS = [
 
 // Admin steps
 const ADMIN_STEPS = [
-  'admin_edit_buy_rate', 'admin_edit_sell_rate',
+  'admin_edit_buy_rate', 'admin_edit_sell_rate', 'admin_edit_sm_buy_rate',
   'admin_add_svc_id', 'admin_add_svc_name', 'admin_add_svc_cup', 'admin_add_svc_emoji',
   'admin_broadcast_msg',
 ];
@@ -402,14 +402,14 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
       return;
     }
     const smRate = SM_BUY_RATE;
-    const cupAmount = Math.round(amount / smRate);
+    const cupAmount = Math.round(amount * smRate);
     await supabase.from('bot_config').upsert({ key: `purchase_${chatId}`, value: { description: `Compra de SM: ${amount} SM`, contactMessage: `Buenas tardes, he transferido ${amount} de saldo móvil` }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
     await upsertUserState(supabase, chatId, username, firstName, 'compra_sm_waiting_screenshot');
     await sendMessage(botToken, chatId,
       `📲 <b>Compra de Saldo Móvil</b>\n\n` +
       `Cantidad: <b>${amount} SM</b>\n` +
       `Recibirás: <b>${cupAmount} CUP</b>\n` +
-      `(Tasa: ${smRate} SM = 1 CUP)\n\n` +
+      `(Tasa: 1 SM = ${smRate} CUP)\n\n` +
       `📱 Transfiere el saldo al número:\n` +
       `<code>58613666</code>\n\n` +
       `📸 Después de transferir, envía una <b>captura de pantalla</b> de la transferencia.`,
@@ -569,7 +569,7 @@ async function handleMessage(botToken: string, supabase: any, message: any, cfg:
     if (text === '📲 Compra de SM') {
       await sendMessage(botToken, chatId,
         `📲 <b>Compra de Saldo Móvil</b>\n\n` +
-        `El administrador compra saldo móvil a <b>2.5</b> (2.5 SM = 1 CUP)\n\n` +
+        `El administrador compra saldo móvil a <b>${SM_BUY_RATE}</b> (1 SM = ${SM_BUY_RATE} CUP)\n\n` +
         `📝 Envía la <b>cantidad de saldo</b> que vas a vender:`,
         { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'cancel_to_tienda' }]] } }
       );
@@ -659,11 +659,13 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     await sendMessage(botToken, chatId,
       `💰 <b>Tasas de Cambio</b>\n\n` +
       `🪙 Compra USDT: <b>${cfg2.buy_rate || 'N/A'} CUP</b>\n` +
-      `💵 Venta USDT: <b>${cfg2.sell_rate || 'N/A'} CUP</b>`,
+      `💵 Venta USDT: <b>${cfg2.sell_rate || 'N/A'} CUP</b>\n` +
+      `📲 Compra SM: <b>${cfg2.sm_buy_rate || 2.5}</b> (1 SM = ${cfg2.sm_buy_rate || 2.5} CUP)`,
       {
         reply_markup: {
           inline_keyboard: [
-            [{ text: '✏️ Editar Compra', callback_data: 'admin_set_buy' }, { text: '✏️ Editar Venta', callback_data: 'admin_set_sell' }],
+            [{ text: '✏️ Editar Compra USDT', callback_data: 'admin_set_buy' }, { text: '✏️ Editar Venta USDT', callback_data: 'admin_set_sell' }],
+            [{ text: '✏️ Editar Compra SM', callback_data: 'admin_set_sm_buy_rate' }],
             [{ text: '🔙 Volver', callback_data: 'admin_panel' }],
           ],
         },
@@ -687,6 +689,15 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     await upsertUserState(supabase, chatId, username, firstName, 'admin_edit_sell_rate');
     await sendMessage(botToken, chatId, '✏️ Envía el nuevo precio de <b>venta USDT</b> (CUP por 1 USDT):',
       { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'admin_panel' }]] } });
+    return;
+  }
+
+  if (callbackData === 'admin_set_sm_buy_rate') {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'admin_edit_sm_buy_rate');
+    await sendMessage(botToken, chatId, '✏️ Envía la nueva tasa de <b>compra SM</b> (CUP por 1 SM, ej: 2.5):',
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'admin_rates' }]] } });
     return;
   }
 
@@ -1117,6 +1128,19 @@ async function handleAdminTextInput(botToken: string, supabase: any, chatId: num
     await supabase.from('bot_config').upsert({ key: 'sell_rate', value: val, updated_at: new Date().toISOString() }, { onConflict: 'key' });
     await upsertUserState(supabase, chatId, username, firstName, 'menu');
     await sendMessage(botToken, chatId, `✅ Tasa de venta actualizada a <b>${val} CUP</b>.`,
+      { reply_markup: { inline_keyboard: [[{ text: '🔙 Volver', callback_data: 'admin_rates' }]] } });
+    return;
+  }
+
+  if (step === 'admin_edit_sm_buy_rate') {
+    const val = parseFloat(text.trim());
+    if (isNaN(val) || val <= 0) {
+      await sendMessage(botToken, chatId, '❌ Envía un número válido (ej: 2.5).');
+      return;
+    }
+    await supabase.from('bot_config').upsert({ key: 'sm_buy_rate', value: val, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    await upsertUserState(supabase, chatId, username, firstName, 'menu');
+    await sendMessage(botToken, chatId, `✅ Tasa de compra SM actualizada a <b>${val}</b> (1 SM = ${val} CUP).`,
       { reply_markup: { inline_keyboard: [[{ text: '🔙 Volver', callback_data: 'admin_rates' }]] } });
     return;
   }
