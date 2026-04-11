@@ -692,6 +692,15 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     return;
   }
 
+  if (callbackData === 'admin_set_sm_buy_rate') {
+    if (!ADMIN_IDS.includes(chatId)) return;
+    await answerCallbackQuery(botToken, callbackQuery.id);
+    await upsertUserState(supabase, chatId, username, firstName, 'admin_edit_sm_buy_rate');
+    await sendMessage(botToken, chatId, '✏️ Envía la nueva tasa de <b>compra SM</b> (CUP por 1 SM, ej: 2.5):',
+      { reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'admin_rates' }]] } });
+    return;
+  }
+
   // --- Admin SM packages ---
   if (callbackData === 'admin_sm') {
     if (!ADMIN_IDS.includes(chatId)) return;
@@ -1123,7 +1132,19 @@ async function handleAdminTextInput(botToken: string, supabase: any, chatId: num
     return;
   }
 
-  if (step?.startsWith('admin_edit_sm_cup:')) {
+  if (step === 'admin_edit_sm_buy_rate') {
+    const val = parseFloat(text.trim());
+    if (isNaN(val) || val <= 0) {
+      await sendMessage(botToken, chatId, '❌ Envía un número válido (ej: 2.5).');
+      return;
+    }
+    await supabase.from('bot_config').upsert({ key: 'sm_buy_rate', value: val, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    await upsertUserState(supabase, chatId, username, firstName, 'menu');
+    await sendMessage(botToken, chatId, `✅ Tasa de compra SM actualizada a <b>${val}</b> (1 SM = ${val} CUP).`,
+      { reply_markup: { inline_keyboard: [[{ text: '🔙 Volver', callback_data: 'admin_rates' }]] } });
+    return;
+  }
+
     const idx = parseInt(step.split(':')[1]);
     const val = parseInt(text.trim());
     if (isNaN(val)) {
