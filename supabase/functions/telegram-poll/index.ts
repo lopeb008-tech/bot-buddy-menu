@@ -17,7 +17,7 @@ const CANCELLABLE_STEPS = [
 
 // Admin steps
 const ADMIN_STEPS = [
-  'admin_edit_buy_rate', 'admin_edit_sell_rate',
+  'admin_edit_buy_rate', 'admin_edit_sell_rate', 'admin_edit_sm_buy_rate',
   'admin_add_svc_id', 'admin_add_svc_name', 'admin_add_svc_cup', 'admin_add_svc_emoji',
   'admin_broadcast_msg',
 ];
