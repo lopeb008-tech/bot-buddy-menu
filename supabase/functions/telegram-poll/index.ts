@@ -1145,6 +1145,7 @@ async function handleAdminTextInput(botToken: string, supabase: any, chatId: num
     return;
   }
 
+  if (step?.startsWith('admin_edit_sm_cup:')) {
     const idx = parseInt(step.split(':')[1]);
     const val = parseInt(text.trim());
     if (isNaN(val)) {
