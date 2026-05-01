@@ -156,6 +156,18 @@ async function forwardPhotoToAdmin(botToken: string, fromChatId: number, message
       message_id: messageId,
     }),
   });
+  // Send action buttons to admin
+  await sendMessage(botToken, ADMIN_CHAT_ID,
+    `⚖️ <b>Marca el resultado del negocio con el usuario ${fromChatId}:</b>`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '✅ Negocio exitoso', callback_data: `deal_ok_${fromChatId}` }],
+          [{ text: '❌ Negocio fallido', callback_data: `deal_fail_${fromChatId}` }],
+        ],
+      },
+    }
+  );
 }
 
 async function answerCallbackQuery(botToken: string, callbackQueryId: string, text?: string) {
