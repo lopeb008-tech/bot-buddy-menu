@@ -637,6 +637,55 @@ async function handleCallbackQuery(botToken: string, supabase: any, callbackQuer
     return;
   }
 
+  // --- Admin marks deal result ---
+  if (callbackData.startsWith('deal_ok_') || callbackData.startsWith('deal_fail_')) {
+    if (!ADMIN_IDS.includes(chatId)) {
+      await answerCallbackQuery(botToken, callbackQuery.id, '❌ No autorizado');
+      return;
+    }
+    const isOk = callbackData.startsWith('deal_ok_');
+    const userChatId = parseInt(callbackData.replace(isOk ? 'deal_ok_' : 'deal_fail_', ''), 10);
+
+    if (isOk) {
+      // Increment user's successful_deals
+      const { data: userCfg } = await supabase
+        .from('telegram_user_config')
+        .select('successful_deals')
+        .eq('chat_id', userChatId)
+        .single();
+      const userDeals = (userCfg?.successful_deals ?? 0) + 1;
+      await supabase.from('telegram_user_config').upsert({
+        chat_id: userChatId,
+        successful_deals: userDeals,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'chat_id' });
+
+      // Increment admin's successful_deals
+      const { data: adminCfg } = await supabase
+        .from('telegram_user_config')
+        .select('successful_deals')
+        .eq('chat_id', chatId)
+        .single();
+      const adminDeals = (adminCfg?.successful_deals ?? 0) + 1;
+      await supabase.from('telegram_user_config').upsert({
+        chat_id: chatId,
+        successful_deals: adminDeals,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'chat_id' });
+
+      await answerCallbackQuery(botToken, callbackQuery.id, '✅ Negocio marcado como exitoso');
+      await sendMessage(botToken, chatId, `✅ <b>Negocio exitoso registrado</b> para el usuario <code>${userChatId}</code>.`);
+      await sendMessage(botToken, userChatId,
+        '🎉 <b>El negocio ha sido exitoso</b>\n\nGracias por confiar en nuestros servicios.');
+    } else {
+      await answerCallbackQuery(botToken, callbackQuery.id, '❌ Negocio marcado como fallido');
+      await sendMessage(botToken, chatId, `❌ <b>Negocio fallido</b> registrado para el usuario <code>${userChatId}</code>.`);
+      await sendMessage(botToken, userChatId,
+        '⚠️ <b>El negocio no pudo completarse.</b>\n\nPor favor contacta con el administrador para más información.');
+    }
+    return;
+  }
+
   // --- Verify channel ---
   if (callbackData === 'verify_channel') {
     await answerCallbackQuery(botToken, callbackQuery.id, '✅ ¡Verificación exitosa!');
