@@ -25,6 +25,27 @@ const ADMIN_STEPS = [
 const ADMIN_CHAT_ID = 5127721601;
 const ADMIN_IDS = [5075629326, 5127721601];
 
+// ---- Render / external hosting support ----
+const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN');
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const WEBHOOK_URL = Deno.env.get('WEBHOOK_URL');
+const WEBHOOK_ONLY = Deno.env.get('WEBHOOK_ONLY') === 'true';
+const PORT = parseInt(Deno.env.get('PORT') || '8000');
+
+if (WEBHOOK_URL && BOT_TOKEN) {
+  const setWebhookRes = await fetch(`${TELEGRAM_API}/bot${BOT_TOKEN}/setWebhook`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      url: WEBHOOK_URL,
+      allowed_updates: ['message', 'callback_query'],
+    }),
+  });
+  const setWebhookData = await setWebhookRes.json();
+  console.log('Set webhook result:', setWebhookData);
+}
+
 async function loadConfig(supabase: any) {
   const { data: configRows } = await supabase.from('bot_config').select('*');
   const botConfig: Record<string, any> = {};
@@ -50,17 +71,17 @@ async function loadConfig(supabase: any) {
   };
 }
 
-Deno.serve(async (req) => {
+Deno.serve({ port: PORT }, async (req) => {
   const startTime = Date.now();
 
-  const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN');
   if (!BOT_TOKEN) {
     return new Response(JSON.stringify({ error: 'TELEGRAM_BOT_TOKEN not configured' }), { status: 500 });
   }
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return new Response(JSON.stringify({ error: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not configured' }), { status: 500 });
+  }
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   // ---- Webhook mode: Telegram POSTs a single update ----
   let body: any = null;
@@ -79,6 +100,12 @@ Deno.serve(async (req) => {
     }
     return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
   }
+
+  // ---- Render webhook-only health check ----
+  if (WEBHOOK_ONLY) {
+    return new Response(JSON.stringify({ ok: true, mode: 'webhook' }), { headers: { 'Content-Type': 'application/json' } });
+  }
+
 
   let totalProcessed = 0;
 
