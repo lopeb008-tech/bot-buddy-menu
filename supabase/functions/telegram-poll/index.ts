@@ -25,7 +25,32 @@ const ADMIN_STEPS = [
 const ADMIN_CHAT_ID = 5127721601;
 const ADMIN_IDS = [5075629326, 5127721601];
 
-Deno.serve(async () => {
+async function loadConfig(supabase: any) {
+  const { data: configRows } = await supabase.from('bot_config').select('*');
+  const botConfig: Record<string, any> = {};
+  (configRows || []).forEach((r: any) => { botConfig[r.key] = r.value; });
+
+  const { data: svcRows } = await supabase.from('bot_services').select('*').eq('active', true).order('sort_order');
+
+  return {
+    ADMIN_CUP_CARD: botConfig.admin_cup_card || '9204-0699-9692-9675',
+    ADMIN_CONFIRM_NUMBER: botConfig.admin_confirm_number || '58613666',
+    ADMIN_MI_TRANSFER: botConfig.admin_mi_transfer || '58613666',
+    ADMIN_USDT_WALLET: botConfig.admin_usdt_wallet || '0xD64Ea37111d1926C1015091a6D241996946A29B0',
+    BUY_RATE: botConfig.buy_rate || 600,
+    SELL_RATE: botConfig.sell_rate || 640,
+    SM_PACKAGES: botConfig.sm_packages || [
+      { sm: 120, cup: 400 },
+      { sm: 240, cup: 1000 },
+      { sm: 370, cup: 1300 },
+    ],
+    SERVICES: (svcRows || []).filter((s: any) => s.category === 'service'),
+    TELEGRAM_PREMIUM: (svcRows || []).filter((s: any) => s.category === 'telegram_premium'),
+    SM_BUY_RATE: botConfig.sm_buy_rate || 2.5,
+  };
+}
+
+Deno.serve(async (req) => {
   const startTime = Date.now();
 
   const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN');
@@ -36,6 +61,24 @@ Deno.serve(async () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  // ---- Webhook mode: Telegram POSTs a single update ----
+  let body: any = null;
+  try { body = await req.json(); } catch { /* no body -> polling mode */ }
+
+  if (body && (body.update_id !== undefined)) {
+    const cfg = await loadConfig(supabase);
+    try {
+      if (body.message) {
+        await handleMessage(BOT_TOKEN, supabase, body.message, cfg);
+      } else if (body.callback_query) {
+        await handleCallbackQuery(BOT_TOKEN, supabase, body.callback_query, cfg);
+      }
+    } catch (e) {
+      console.error('Error processing webhook update:', e);
+    }
+    return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
+  }
 
   let totalProcessed = 0;
 
@@ -50,6 +93,7 @@ Deno.serve(async () => {
   }
 
   let currentOffset = state.update_offset;
+
 
   while (true) {
     const elapsed = Date.now() - startTime;
