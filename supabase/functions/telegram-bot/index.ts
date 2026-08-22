@@ -19,7 +19,37 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { action, channel_username } = await req.json();
+    const { action, channel_username, url } = await req.json();
+
+    if (action === 'setWebhook') {
+      if (!url || typeof url !== 'string' || !url.startsWith('https://')) {
+        return new Response(JSON.stringify({ error: 'url https requerida' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      const res = await fetch(`${TELEGRAM_API}/bot${BOT_TOKEN}/setWebhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url,
+          allowed_updates: ['message', 'edited_message', 'callback_query'],
+          drop_pending_updates: true,
+        }),
+      });
+      const data = await res.json();
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (action === 'getWebhookInfo') {
+      const res = await fetch(`${TELEGRAM_API}/bot${BOT_TOKEN}/getWebhookInfo`);
+      const data = await res.json();
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (action === 'getMe') {
       const res = await fetch(`${TELEGRAM_API}/bot${BOT_TOKEN}/getMe`);
